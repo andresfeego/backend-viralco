@@ -1,0 +1,29 @@
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: viralco-mariadb
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_DATABASE: viralco
+      MARIADB_USER: viralco
+      MARIADB_PASSWORD: viralco_pass
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+00:00
+      - --sql-mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1", "-uviralco", "-pviralco_pass"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+volumes:
+  mariadb_data:
