@@ -1,17 +1,38 @@
 import 'dotenv/config';
-import express from 'express';
 import cors from 'cors';
+import express from 'express';
 
-import signedUrlRoute from './routes/signed-url.ts';
+import { env } from './lib/env.ts';
+import { auditLogMiddleware } from './middlewares/audit-log.ts';
+import adminRoute from './routes/admin.ts';
+import authRoute from './routes/auth.ts';
+import permissionsRoute from './routes/permissions.ts';
 import postRoute from './routes/post.ts';
+import signedUrlRoute from './routes/signed-url.ts';
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
+app.use(auditLogMiddleware);
+
+app.get('/health', (_, res) => {
+  res.status(200).json({ ok: true });
+});
 
 app.use('/api/signed-url', signedUrlRoute);
 app.use('/api/posts', postRoute);
 
-app.listen(process.env.PORT, () => {
-  console.log(`Server is running on port ${process.env.PORT}`);
+app.use('/api/auth', authRoute);
+app.use('/api/permissions', permissionsRoute);
+app.use('/api/admin', adminRoute);
+
+app.use((error: any, _req: any, res: any, _next: any) => {
+  console.error('[server:error]', error);
+  const message = error instanceof Error ? error.message : 'Error interno del servidor';
+  res.status(500).json({ error: message });
+});
+
+app.listen(env.port, () => {
+  console.log(`Server is running on port ${env.port}`);
 });
