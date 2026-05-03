@@ -9,6 +9,7 @@ import authRoute from './routes/auth.ts';
 import permissionsRoute from './routes/permissions.ts';
 import postRoute from './routes/post.ts';
 import signedUrlRoute from './routes/signed-url.ts';
+import eventsRoute from './routes/events.ts';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/posts', postRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/permissions', permissionsRoute);
 app.use('/api/admin', adminRoute);
+app.use('/api/events', eventsRoute);
 
 app.use((error: any, _req: any, res: any, _next: any) => {
   console.error('[server:error]', error);
@@ -33,6 +35,6 @@ app.use((error: any, _req: any, res: any, _next: any) => {
   res.status(500).json({ error: message });
 });
 
-app.listen(env.port, () => {
-  console.log(`Server is running on port ${env.port}`);
+app.listen(env.port, '0.0.0.0', () => {
+  console.log(`Server is running on http://0.0.0.0:${env.port}`);
 });
