@@ -8,7 +8,7 @@ export function requireActive(req: any, res: any, next: any) {
     return;
   }
 
-  if (user.estado !== 'active') {
+  if (user.status?.slug !== 'active') {
     jsonError(res, 403, 'Usuario sin acceso activo');
     return;
   }

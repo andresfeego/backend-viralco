@@ -36,6 +36,11 @@ Copiar `.env.example` a `.env` y completar:
 - `npm run db:migrate`: aplica migraciones
 - `npm run db:rollback`: revierte la ultima migracion
 - `npm run db:seed`: ejecuta seeds
+- `npm run db:bootstrap-super-admin`: crea o actualiza el Super Admin usando variables `BOOTSTRAP_SUPER_ADMIN_*`
+- `npm test`: ejecuta pruebas unitarias
+- `npm run test:integration`: ejecuta pruebas contra una DB migrada con `RUN_DB_TESTS=1`
+
+La fuente tecnica del esquema es `docs/database/viralco.dbml`. El reset de esta version no conserva datos del esquema anterior.
 
 ## MariaDB local (Docker)
 
@@ -51,7 +56,10 @@ Se incluye `docker-compose.mariadb.yml` para levantar MariaDB local en puerto `3
 
 1. `npm run db:local:up`
 2. `npm run db:local:migrate`
-3. correr API con tus vars de entorno (`npm run dev`)
+3. `npm run db:seed`
+4. configurar `BOOTSTRAP_SUPER_ADMIN_EMAIL`, `BOOTSTRAP_SUPER_ADMIN_PASSWORD` y `BOOTSTRAP_SUPER_ADMIN_NAME`
+5. `npm run db:bootstrap-super-admin`
+6. correr API con tus vars de entorno (`npm run dev`)
 
 ### Orden recomendado en deploy
 

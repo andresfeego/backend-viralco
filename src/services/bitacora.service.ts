@@ -1,6 +1,7 @@
 import { and, desc, gte, lte } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { bitacoraTable } from '../db/schema.ts';
+import { serializeId } from '../lib/ids.ts';
 
 export async function logBitacoraEvent(input: any) {
   await db.insert(bitacoraTable).values({
@@ -55,8 +56,8 @@ export async function listBitacora(input: any = {}) {
     pageSize,
     hasMore,
     items: pageRows.map((row: any) => ({
-      id: row.id,
-      actorUserId: row.actorUserId,
+      id: serializeId(row.id),
+      actorUserId: serializeId(row.actorUserId),
       actorEmail: row.actorEmail,
       actorRoles: row.actorRoles,
       canal: row.canal,

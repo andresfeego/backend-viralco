@@ -1,0 +1,24 @@
+import express from 'express';
+import { deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postMember } from '../controllers/accounts.controller.ts';
+import { getAccountLibrary, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryUpload } from '../controllers/library.controller.ts';
+import { getAccountEvents, postAccountEvent } from '../controllers/events.controller.ts';
+import { requireActive } from '../middlewares/require-active.ts';
+import { requireAuth } from '../middlewares/require-auth.ts';
+
+const router = express.Router();
+router.use(requireAuth, requireActive);
+router.get('/', getAccounts);
+router.get('/:accountId', getAccountById);
+router.patch('/:accountId', patchAccount);
+router.get('/:accountId/events', getAccountEvents);
+router.post('/:accountId/events', postAccountEvent);
+router.get('/:accountId/library', getAccountLibrary);
+router.post('/:accountId/library/uploads', postAccountLibraryUpload);
+router.post('/:accountId/library/assets', postAccountLibraryAsset);
+router.post('/:accountId/library', postAccountLibraryEntry);
+router.post('/:accountId/library/:libraryAssetId/clone', postAccountLibraryClone);
+router.get('/:accountId/members', getMembers);
+router.post('/:accountId/members', postMember);
+router.patch('/:accountId/members/:membershipId', patchMember);
+router.delete('/:accountId/members/:membershipId', deleteMember);
+export default router;

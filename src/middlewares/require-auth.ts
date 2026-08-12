@@ -1,6 +1,7 @@
 import { jsonError } from '../lib/http.ts';
 import { verifyAccessToken } from '../services/token.service.ts';
 import { buildAuthUser } from '../services/user.service.ts';
+import { parseEntityId } from '../lib/ids.ts';
 
 function readBearerToken(req: any) {
   const authHeader = req.headers.authorization || '';
@@ -26,7 +27,7 @@ export async function requireAuth(req: any, res: any, next: any) {
       return;
     }
 
-    const userId = Number(payload.sub);
+    const userId = parseEntityId(payload.sub, 'ID de usuario');
     const authUser = await buildAuthUser(userId);
 
     if (!authUser) {

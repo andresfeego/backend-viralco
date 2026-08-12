@@ -1,62 +1,46 @@
-import { assignRoleToUser, createUser, findRoleBySlug, findUserByEmail, listUsersByRole, sanitizeUser, updateUserEstado, userHasRole } from './user.service.ts';
+import { parseEntityId } from '../lib/ids.ts';
+import { ServiceError } from '../lib/service-error.ts';
+import { revokeAllRefreshTokensByUserId } from './auth-store.service.ts';
 import { hashPassword } from './crypto.service.ts';
+import { buildAuthUser, createUser, findUserByEmail, listUsers, updateUserStatus, userHasGlobalRole } from './user.service.ts';
 
 export async function listAdminUsers() {
-  const rows = await listUsersByRole('admin');
-  return rows.map(sanitizeUser);
+  return (await listUsers()).filter(Boolean);
 }
 
-async function assertNotSuperAdmin(userId: number) {
-  const isSuperAdmin = await userHasRole(userId, 'super_admin');
-  if (isSuperAdmin) {
-    throw new Error('No se permite modificar estado de un Super Admin');
-  }
+async function assertNotSuperAdmin(userId: bigint) {
+  if (await userHasGlobalRole(userId, 'super_admin')) throw new ServiceError(409, 'No se permite modificar un Super Admin');
 }
 
-export async function activateUser(userId: number) {
+export async function changeUserStatus(userIdValue: unknown, statusSlugValue: unknown) {
+  const userId = parseEntityId(userIdValue, 'ID de usuario');
+  const statusSlug = String(statusSlugValue || '').trim() as 'pending' | 'active' | 'suspended';
+  if (!['pending', 'active', 'suspended'].includes(statusSlug)) throw new ServiceError(400, 'Estado de usuario invalido');
   await assertNotSuperAdmin(userId);
-  const user = await updateUserEstado(userId, 'active');
-  if (!user) {
-    throw new Error('Usuario no encontrado');
-  }
-  return sanitizeUser(user);
+  const user = await updateUserStatus(userId, statusSlug);
+  if (!user) throw new ServiceError(404, 'Usuario no encontrado');
+  if (statusSlug === 'suspended') await revokeAllRefreshTokensByUserId(userId);
+  return user;
 }
 
-export async function deactivateUser(userId: number) {
-  await assertNotSuperAdmin(userId);
-  const user = await updateUserEstado(userId, 'inactive');
-  if (!user) {
-    throw new Error('Usuario no encontrado');
-  }
-  return sanitizeUser(user);
+export async function activateUser(userId: unknown) {
+  return changeUserStatus(userId, 'active');
+}
+
+export async function deactivateUser(userId: unknown) {
+  return changeUserStatus(userId, 'suspended');
 }
 
 export async function createAdminUser(input: any) {
   const email = String(input?.email || '').trim().toLowerCase();
   const password = String(input?.password || '');
-
-  if (!email || !email.includes('@')) {
-    throw new Error('Correo invalido');
-  }
-  if (!password || password.length < 8) {
-    throw new Error('Contrasena invalida (minimo 8 caracteres)');
-  }
-
-  const existing = await findUserByEmail(email);
-  if (existing) {
-    throw new Error('El correo ya esta registrado');
-  }
-
-  const adminRole = await findRoleBySlug('admin');
-  if (!adminRole) {
-    throw new Error('Rol admin no existe. Ejecuta seeds.');
-  }
-
-  const passwordHash = await hashPassword(password);
-  const user = await createUser(email, passwordHash, 'pending');
-  if (!user) {
-    throw new Error('No se pudo crear usuario admin');
-  }
-  await assignRoleToUser(user.id, adminRole.id);
-  return sanitizeUser(user);
+  const name = String(input?.name || '').trim();
+  const phone = String(input?.phone || '').trim() || null;
+  if (!email.includes('@')) throw new ServiceError(400, 'Correo invalido');
+  if (password.length < 8) throw new ServiceError(400, 'Contrasena invalida (minimo 8 caracteres)');
+  if (name.length < 2) throw new ServiceError(400, 'Nombre invalido');
+  if (await findUserByEmail(email)) throw new ServiceError(409, 'El correo ya esta registrado');
+  const user = await createUser({ email, password: await hashPassword(password), name, phone, statusSlug: 'pending' });
+  if (!user) throw new ServiceError(500, 'No se pudo crear usuario');
+  return buildAuthUser(user.id);
 }

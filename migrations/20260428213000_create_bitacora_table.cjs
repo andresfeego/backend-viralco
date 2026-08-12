@@ -4,7 +4,7 @@
 exports.up = async function up(knex) {
   await knex.schema.createTable('bitacora', (table) => {
     table.increments('id').primary();
-    table.integer('actor_user_id').unsigned().nullable();
+    table.bigInteger('actor_user_id').unsigned().nullable();
     table.string('actor_email', 255).nullable();
     table.text('actor_roles').nullable();
     table.string('canal', 32).notNullable().defaultTo('api');
@@ -28,6 +28,7 @@ exports.up = async function up(knex) {
     table.index(['actor_user_id']);
     table.index(['accion']);
     table.index(['resultado']);
+    table.foreign('actor_user_id').references('users.id').onDelete('SET NULL');
   });
 };
 

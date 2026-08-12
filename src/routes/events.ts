@@ -1,29 +1,19 @@
 import express from 'express';
-import {
-  getEvent,
-  getEvents,
-  getOverlays,
-  patchEvent,
-  patchEventBranding,
-  patchOverlay,
-  postEvent,
-  postOverlay,
-} from '../controllers/events.controller.ts';
+import { deleteResource, getEvent, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
-import { requireAnyRole } from '../middlewares/require-any-role.ts';
 
 const router = express.Router();
+router.use(requireAuth, requireActive);
 
-router.get('/', requireAuth, requireActive, getEvents);
-router.get('/:id', requireAuth, requireActive, getEvent);
-
-router.post('/', requireAuth, requireAnyRole(['admin', 'super_admin']), postEvent);
-router.patch('/:id', requireAuth, requireAnyRole(['admin', 'super_admin']), patchEvent);
-router.patch('/:id/branding', requireAuth, requireAnyRole(['admin', 'super_admin']), patchEventBranding);
-
-router.get('/:id/overlays', requireAuth, requireActive, getOverlays);
-router.post('/:id/overlays', requireAuth, requireAnyRole(['admin', 'super_admin']), postOverlay);
-router.patch('/:id/overlays/:overlayId', requireAuth, requireAnyRole(['admin', 'super_admin']), patchOverlay);
+router.get('/types', getTypes);
+router.get('/modes', getTypes);
+router.get('/:id', getEvent);
+router.patch('/:id', patchEvent);
+router.patch('/:id/branding', patchEventBranding);
+router.get('/:id/resources', getResources);
+router.post('/:id/resources', postResource);
+router.patch('/:id/resources/:resourceId', patchResource);
+router.delete('/:id/resources/:resourceId', deleteResource);
 
 export default router;

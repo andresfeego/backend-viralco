@@ -1,96 +1,47 @@
 import { jsonError } from '../lib/http.ts';
-import {
-  forgotPassword,
-  loginUser,
-  logoutUser,
-  me,
-  refreshSession,
-  registerUser,
-  resetPassword,
-  updateMyThemeMode,
-} from '../services/auth.service.ts';
+import { serviceErrorStatus } from '../lib/service-error.ts';
+import { forgotPassword, getMyProfile, loginUser, logoutUser, refreshSession, registerUser, resetPassword, updateMyTheme } from '../services/auth.service.ts';
 
-function badRequest(res: any, error: any) {
-  const message = error instanceof Error ? error.message : 'Solicitud invalida';
-  jsonError(res, 400, message);
+function sendError(res: any, error: unknown, fallback: string) {
+  jsonError(res, serviceErrorStatus(error), error instanceof Error ? error.message : fallback);
 }
 
 export async function register(req: any, res: any) {
-  try {
-    const result = await registerUser(req.body || {});
-    res.status(201).json(result);
-  } catch (error) {
-    badRequest(res, error);
-  }
+  try { res.status(201).json(await registerUser(req.body || {})); }
+  catch (error) { sendError(res, error, 'No se pudo registrar usuario'); }
 }
 
 export async function login(req: any, res: any) {
-  try {
-    const result = await loginUser(req.body || {});
-    res.status(200).json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Credenciales invalidas';
-    const status = message.toLowerCase().includes('credenciales') ? 401 : 400;
-    jsonError(res, status, message);
-  }
+  try { res.status(200).json(await loginUser(req.body || {})); }
+  catch (error) { sendError(res, error, 'No se pudo iniciar sesion'); }
 }
 
 export async function refresh(req: any, res: any) {
-  try {
-    const refreshToken = req.body?.refreshToken;
-    const result = await refreshSession(refreshToken);
-    res.status(200).json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo refrescar sesion';
-    jsonError(res, 401, message);
-  }
+  try { res.status(200).json(await refreshSession(req.body?.refreshToken)); }
+  catch (error) { sendError(res, error, 'No se pudo refrescar sesion'); }
 }
 
 export async function logout(req: any, res: any) {
-  try {
-    const authUserId = req.authUser?.id ? Number(req.authUser.id) : undefined;
-    const result = await logoutUser(req.body || {}, authUserId);
-    res.status(200).json(result);
-  } catch (error) {
-    badRequest(res, error);
-  }
+  try { res.status(200).json(await logoutUser(req.body || {}, req.authUser?.id)); }
+  catch (error) { sendError(res, error, 'No se pudo cerrar sesion'); }
 }
 
 export async function forgot(req: any, res: any) {
-  try {
-    const result = await forgotPassword(req.body || {});
-    res.status(200).json(result);
-  } catch (error) {
-    badRequest(res, error);
-  }
+  try { res.status(200).json(await forgotPassword(req.body || {})); }
+  catch (error) { sendError(res, error, 'No se pudo iniciar recuperacion'); }
 }
 
 export async function reset(req: any, res: any) {
-  try {
-    const result = await resetPassword(req.body || {});
-    res.status(200).json(result);
-  } catch (error) {
-    badRequest(res, error);
-  }
+  try { res.status(200).json(await resetPassword(req.body || {})); }
+  catch (error) { sendError(res, error, 'No se pudo actualizar contrasena'); }
 }
 
 export async function getMe(req: any, res: any) {
-  try {
-    const userId = Number(req.authUser?.id);
-    const result = await me(userId);
-    res.status(200).json(result);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo obtener perfil';
-    jsonError(res, 400, message);
-  }
+  try { res.status(200).json(await getMyProfile(req.authUser.id)); }
+  catch (error) { sendError(res, error, 'No se pudo obtener perfil'); }
 }
 
-export async function updateMyTheme(req: any, res: any) {
-  try {
-    const userId = Number(req.authUser?.id);
-    const result = await updateMyThemeMode(userId, req.body || {});
-    res.status(200).json(result);
-  } catch (error) {
-    badRequest(res, error);
-  }
+export async function updateMyThemeController(req: any, res: any) {
+  try { res.status(200).json(await updateMyTheme(req.authUser.id, req.body || {})); }
+  catch (error) { sendError(res, error, 'No se pudo actualizar tema'); }
 }

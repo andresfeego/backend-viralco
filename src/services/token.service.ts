@@ -25,7 +25,7 @@ export function createRefreshToken(user: any) {
   );
 }
 
-export function createSuperAdminConfirmToken(userId: number) {
+export function createSuperAdminConfirmToken(userId: string) {
   return jwt.sign(
     {
       sub: String(userId),

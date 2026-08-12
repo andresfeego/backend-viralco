@@ -1,9 +1,10 @@
 import { jsonError } from '../lib/http.ts';
 import { getMyPermissions } from '../services/permissions.service.ts';
+import { parseEntityId } from '../lib/ids.ts';
 
 export async function myPermissions(req: any, res: any) {
   try {
-    const userId = Number(req.authUser?.id);
+    const userId = parseEntityId(req.authUser?.id);
     const permissions = await getMyPermissions(userId);
     res.status(200).json({ permissions });
   } catch (error) {

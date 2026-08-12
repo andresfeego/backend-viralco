@@ -1,29 +1,21 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
+  accountsTable,
+  accountUsersTable,
   permissionsTable,
   rolePermissionsTable,
   rolesTable,
   userRolesTable,
+  userStatusesTable,
   usersTable,
 } from '../db/schema.ts';
+import { serializeId, type EntityId } from '../lib/ids.ts';
+import { ServiceError } from '../lib/service-error.ts';
 
-const ESTADO_ID_BY_SLUG: Record<string, number> = {
-  pending: 1,
-  active: 2,
-  inactive: 3,
-};
-
-export function sanitizeUser(user: any) {
-  return {
-    id: user.id,
-    email: user.email,
-    estado: user.estado,
-    estadoId: user.estadoId,
-    themeMode: user.themeMode,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  };
+export async function findUserStatusBySlug(slug: string) {
+  const [status] = await db.select().from(userStatusesTable).where(eq(userStatusesTable.slug, slug)).limit(1);
+  return status || null;
 }
 
 export async function findUserByEmail(email: string) {
@@ -31,7 +23,7 @@ export async function findUserByEmail(email: string) {
   return user || null;
 }
 
-export async function findUserById(userId: number) {
+export async function findUserById(userId: EntityId) {
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   return user || null;
 }
@@ -41,139 +33,124 @@ export async function findRoleBySlug(slug: string) {
   return role || null;
 }
 
-export async function createUser(email: string, password: string, estado = 'pending') {
+export async function createUser(input: { email: string; password: string; name: string; phone?: string | null; statusSlug?: string }) {
+  const status = await findUserStatusBySlug(input.statusSlug || 'pending');
+  if (!status) throw new ServiceError(500, 'Catalogo de estados no inicializado');
   const now = new Date();
-  const estadoId = ESTADO_ID_BY_SLUG[estado] || 1;
   const result = await db.insert(usersTable).values({
-    email,
-    password,
-    estado: estado as any,
-    estadoId,
-    themeMode: 'dark' as any,
+    email: input.email,
+    password: input.password,
+    name: input.name,
+    phone: input.phone || null,
+    statusId: status.id,
+    themeMode: 'dark',
     createdAt: now,
     updatedAt: now,
   });
-
-  const userId = Number(result[0]?.insertId || 0);
-  if (!userId) {
-    throw new Error('No se pudo crear el usuario');
-  }
-
+  const userId = BigInt(result[0]?.insertId || 0);
+  if (!userId) throw new ServiceError(500, 'No se pudo crear el usuario');
   return findUserById(userId);
 }
 
-export async function assignRoleToUser(userId: number, roleId: number) {
-  const [existing] = await db
-    .select()
-    .from(userRolesTable)
-    .where(and(eq(userRolesTable.userId, userId), eq(userRolesTable.roleId, roleId)))
-    .limit(1);
-
-  if (!existing) {
-    await db.insert(userRolesTable).values({ userId, roleId });
-  }
+export async function assignGlobalRoleToUser(userId: EntityId, roleId: EntityId) {
+  const [existing] = await db.select().from(userRolesTable)
+    .where(and(eq(userRolesTable.userId, userId), eq(userRolesTable.roleId, roleId))).limit(1);
+  if (!existing) await db.insert(userRolesTable).values({ userId, roleId });
 }
 
-export async function getUserRoles(userId: number) {
-  const rows = await db
-    .select({
-      id: rolesTable.id,
-      slug: rolesTable.slug,
-      name: rolesTable.name,
-    })
+export async function getUserGlobalRoles(userId: EntityId) {
+  return db.select({ id: rolesTable.id, slug: rolesTable.slug, name: rolesTable.name, description: rolesTable.description })
     .from(userRolesTable)
     .innerJoin(rolesTable, eq(userRolesTable.roleId, rolesTable.id))
     .where(eq(userRolesTable.userId, userId));
-
-  return rows;
 }
 
-export async function getUserPermissions(userId: number) {
-  const rows = await db
-    .select({
-      id: permissionsTable.id,
-      slug: permissionsTable.slug,
-      name: permissionsTable.name,
-    })
+export async function getGlobalPermissions(userId: EntityId) {
+  const rows = await db.select({ id: permissionsTable.id, slug: permissionsTable.slug, name: permissionsTable.name })
     .from(userRolesTable)
     .innerJoin(rolePermissionsTable, eq(userRolesTable.roleId, rolePermissionsTable.roleId))
     .innerJoin(permissionsTable, eq(rolePermissionsTable.permissionId, permissionsTable.id))
     .where(eq(userRolesTable.userId, userId));
-
-  const dedup = new Map<string, any>();
-  for (const row of rows) {
-    dedup.set(row.slug, row);
-  }
-
-  return Array.from(dedup.values());
+  return Array.from(new Map(rows.map((row) => [row.slug, row])).values());
 }
 
-export async function buildAuthUser(userId: number) {
+export const getUserPermissions = getGlobalPermissions;
+
+export async function getUserAccounts(userId: EntityId) {
+  const rows = await db.select({
+    membershipId: accountUsersTable.id,
+    membershipStatus: accountUsersTable.status,
+    accountId: accountsTable.id,
+    slug: accountsTable.slug,
+    name: accountsTable.name,
+    accountStatus: accountsTable.status,
+    roleId: rolesTable.id,
+    roleSlug: rolesTable.slug,
+    roleName: rolesTable.name,
+  }).from(accountUsersTable)
+    .innerJoin(accountsTable, eq(accountUsersTable.accountId, accountsTable.id))
+    .innerJoin(rolesTable, eq(accountUsersTable.roleId, rolesTable.id))
+    .where(eq(accountUsersTable.userId, userId));
+
+  return rows.map((row) => ({
+    membershipId: serializeId(row.membershipId),
+    status: row.membershipStatus,
+    account: { id: serializeId(row.accountId), slug: row.slug, name: row.name, status: row.accountStatus },
+    role: { id: serializeId(row.roleId), slug: row.roleSlug, name: row.roleName },
+  }));
+}
+
+async function getStatus(statusId: EntityId) {
+  const [status] = await db.select().from(userStatusesTable).where(eq(userStatusesTable.id, statusId)).limit(1);
+  return status || null;
+}
+
+export async function buildAuthUser(userId: EntityId) {
   const user = await findUserById(userId);
-  if (!user) {
-    return null;
-  }
-
-  const roles = await getUserRoles(user.id);
-  const permissions = await getUserPermissions(user.id);
-
+  if (!user) return null;
+  const [status, globalRoles, permissions, accounts] = await Promise.all([
+    getStatus(user.statusId), getUserGlobalRoles(user.id), getGlobalPermissions(user.id), getUserAccounts(user.id),
+  ]);
+  if (!status) throw new ServiceError(500, 'Estado de usuario invalido');
   return {
-    ...sanitizeUser(user),
-    roles,
-    permissions,
+    id: serializeId(user.id),
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    themeMode: user.themeMode,
+    status: { id: serializeId(status.id), slug: status.slug, name: status.name },
+    globalRoles: globalRoles.map((role) => ({ ...role, id: serializeId(role.id) })),
+    permissions: permissions.map((permission) => ({ ...permission, id: serializeId(permission.id) })),
+    accounts,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
   };
 }
 
-export async function updateUserEstado(userId: number, estado: 'pending' | 'active' | 'inactive') {
-  await db
-    .update(usersTable)
-    .set({ estado, estadoId: ESTADO_ID_BY_SLUG[estado], updatedAt: new Date() })
-    .where(eq(usersTable.id, userId));
-  return findUserById(userId);
+export async function updateUserStatus(userId: EntityId, statusSlug: 'pending' | 'active' | 'suspended') {
+  const status = await findUserStatusBySlug(statusSlug);
+  if (!status) throw new ServiceError(404, 'Estado de usuario no encontrado');
+  await db.update(usersTable).set({ statusId: status.id, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+  return buildAuthUser(userId);
 }
 
-export async function updateUserPassword(userId: number, passwordHash: string) {
-  await db
-    .update(usersTable)
-    .set({ password: passwordHash, updatedAt: new Date() })
-    .where(eq(usersTable.id, userId));
+export async function updateUserPassword(userId: EntityId, passwordHash: string) {
+  await db.update(usersTable).set({ password: passwordHash, updatedAt: new Date() }).where(eq(usersTable.id, userId));
 }
 
-export async function updateUserThemeMode(userId: number, themeMode: 'dark' | 'light') {
-  await db
-    .update(usersTable)
-    .set({ themeMode: themeMode as any, updatedAt: new Date() })
-    .where(eq(usersTable.id, userId));
-
-  return findUserById(userId);
+export async function updateUserThemeMode(userId: EntityId, themeMode: 'dark' | 'light') {
+  await db.update(usersTable).set({ themeMode, updatedAt: new Date() }).where(eq(usersTable.id, userId));
+  return buildAuthUser(userId);
 }
 
-export async function userHasRole(userId: number, roleSlug: string) {
-  const [row] = await db
-    .select({ roleId: rolesTable.id })
-    .from(userRolesTable)
+export async function userHasGlobalRole(userId: EntityId, roleSlug: string) {
+  const [row] = await db.select({ roleId: rolesTable.id }).from(userRolesTable)
     .innerJoin(rolesTable, eq(userRolesTable.roleId, rolesTable.id))
-    .where(and(eq(userRolesTable.userId, userId), eq(rolesTable.slug, roleSlug)))
-    .limit(1);
-
+    .where(and(eq(userRolesTable.userId, userId), eq(rolesTable.slug, roleSlug))).limit(1);
   return Boolean(row);
 }
 
-export async function listUsersByRole(roleSlug: string) {
-  const rows = await db
-    .select({
-      id: usersTable.id,
-      email: usersTable.email,
-      estado: usersTable.estado,
-      estadoId: usersTable.estadoId,
-      createdAt: usersTable.createdAt,
-      updatedAt: usersTable.updatedAt,
-    })
-    .from(usersTable)
-    .innerJoin(userRolesTable, eq(userRolesTable.userId, usersTable.id))
-    .innerJoin(rolesTable, eq(rolesTable.id, userRolesTable.roleId))
-    .where(eq(rolesTable.slug, roleSlug))
-    .orderBy(desc(usersTable.createdAt));
-
-  return rows;
+export async function listUsers() {
+  const users = await db.select({ id: usersTable.id }).from(usersTable).orderBy(desc(usersTable.createdAt));
+  return Promise.all(users.map((user) => buildAuthUser(user.id)));
 }

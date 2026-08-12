@@ -70,9 +70,9 @@ export function auditLogMiddleware(req: any, res: any, next: any) {
     const fallbackEmail = typeof req.body?.email === 'string' ? String(req.body.email).trim().toLowerCase() : null;
 
     logBitacoraEvent({
-      actorUserId: authUser?.id ? Number(authUser.id) : null,
+      actorUserId: authUser?.id ? BigInt(authUser.id) : null,
       actorEmail: authUser?.email || fallbackEmail,
-      actorRoles: Array.isArray(authUser?.roles) ? JSON.stringify(authUser.roles.map((r: any) => r.slug)) : null,
+      actorRoles: Array.isArray(authUser?.globalRoles) ? JSON.stringify(authUser.globalRoles.map((r: any) => r.slug)) : null,
       canal: detectCanal(req),
       accion: buildAccion(req),
       resultado: isSuccess ? 'success' : 'fail',

@@ -30,7 +30,7 @@ export function requireSuperAdminConfirmation(req: any, res: any, next: any) {
       return;
     }
 
-    if (Number(payload.sub) !== Number(authUser.id)) {
+    if (String(payload.sub) !== String(authUser.id)) {
       jsonError(res, 401, 'Token de confirmacion no corresponde al usuario autenticado');
       return;
     }

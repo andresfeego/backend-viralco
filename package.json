@@ -7,9 +7,13 @@
     "dev": "tsx watch src/server.ts",
     "build": "node scripts/build.mjs",
     "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:integration": "RUN_DB_TESTS=1 vitest run tests/auth-accounts.integration.test.ts",
     "db:migrate": "knex migrate:latest --knexfile knexfile.cjs",
     "db:rollback": "knex migrate:rollback --knexfile knexfile.cjs",
     "db:seed": "knex seed:run --knexfile knexfile.cjs",
+    "db:bootstrap-super-admin": "node scripts/bootstrap-super-admin.cjs",
+    "db:diagram": "node scripts/render-db-diagram.cjs",
     "db:local:up": "docker compose -f docker-compose.mariadb.yml up -d",
     "db:local:down": "docker compose -f docker-compose.mariadb.yml down",
     "db:local:logs": "docker compose -f docker-compose.mariadb.yml logs -f mariadb",
@@ -20,19 +24,24 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.826.0",
-    "@aws-sdk/s3-request-presigner": "^3.826.0",
+    "@aws-sdk/client-s3": "^3.1108.0",
+    "@aws-sdk/s3-request-presigner": "^3.1108.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "drizzle-orm": "^0.44.2",
-    "express": "^5.1.0",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "knex": "^3.1.0",
     "mysql2": "^3.12.0"
   },
   "devDependencies": {
+    "@softwaretechnik/dbml-renderer": "^1.0.31",
+    "@types/supertest": "^7.2.1",
     "esbuild": "^0.27.2",
-    "tsx": "^4.19.4"
+    "sharp": "^0.35.3",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.4",
+    "vitest": "^4.1.10"
   }
 }

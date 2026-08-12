@@ -1,0 +1,383 @@
+Project ViralCo {
+  database_type: 'MariaDB'
+  Note: 'Fuente tecnica del modelo ViralCo. diagrama uml final.png es su representacion visual aprobada. Las reglas de comportamiento viven en docs/database/comportamiento.md.'
+}
+
+Table user_statuses {
+  id bigint [pk, increment]
+  slug varchar(32) [not null, unique, note: 'pending | active | suspended']
+  name varchar(80) [not null]
+  description text
+}
+
+Table users {
+  id bigint [pk, increment]
+  email varchar(255) [not null, unique]
+  password varchar(255) [not null]
+  name varchar(180) [not null]
+  phone varchar(64)
+  status_id bigint [not null, ref: > user_statuses.id]
+  theme_mode varchar(16) [not null, default: 'dark', note: 'dark | light']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table roles {
+  id bigint [pk, increment]
+  slug varchar(64) [not null, unique, note: 'super_admin global; owner/admin/operario/cliente por cuenta']
+  name varchar(120) [not null]
+  description text
+}
+
+Table permissions {
+  id bigint [pk, increment]
+  slug varchar(120) [not null, unique]
+  name varchar(180) [not null]
+  description text
+}
+
+Table user_roles {
+  user_id bigint [pk, ref: > users.id]
+  role_id bigint [pk, ref: > roles.id]
+  Note: 'Asignaciones globales; reservado para roles de plataforma.'
+}
+
+Table role_permissions {
+  role_id bigint [pk, ref: > roles.id]
+  permission_id bigint [pk, ref: > permissions.id]
+}
+
+Table accounts {
+  id bigint [pk, increment]
+  slug varchar(120) [not null, unique]
+  name varchar(180) [not null]
+  logo_asset_id bigint [ref: > library_assets.id]
+  phone varchar(64)
+  owner_user_id bigint [not null, ref: > users.id]
+  status varchar(32) [not null, default: 'active', note: 'active | suspended | canceled']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Cuenta cliente/empresa. Es duenio de suscripcion, eventos y biblioteca privada.'
+}
+
+Table account_users {
+  id bigint [pk, increment]
+  account_id bigint [not null, ref: > accounts.id]
+  user_id bigint [not null, ref: > users.id]
+  role_id bigint [not null, ref: > roles.id]
+  status varchar(32) [not null, default: 'active', note: 'active | suspended']
+  invited_by bigint [ref: > users.id]
+  invited_at datetime
+  joined_at datetime
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { (account_id, user_id) [unique] }
+}
+
+Table refresh_tokens {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  token varchar(255) [not null, unique]
+  expires_at datetime [not null]
+  revoked boolean [not null, default: false]
+}
+
+Table password_reset_tokens {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  token varchar(255) [not null, unique]
+  expires_at datetime [not null]
+  used boolean [not null, default: false]
+}
+
+Table events {
+  id bigint [pk, increment]
+  slug varchar(180) [not null]
+  account_id bigint [not null, ref: > accounts.id]
+  name varchar(180) [not null]
+  description text
+  start_date date
+  end_date date
+  status varchar(32) [not null]
+  timezone varchar(64) [not null]
+  created_by bigint [not null, ref: > users.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { (account_id, slug) [unique] }
+}
+
+Table event_branding {
+  id bigint [pk, increment]
+  event_id bigint [not null, unique, ref: > events.id]
+  logo_resource_id bigint [ref: > event_resources.id]
+  background_resource_id bigint [ref: > event_resources.id]
+  phone varchar(64)
+  primary_color varchar(32)
+  interval varchar(32)
+  max_events int
+  max_storage_gb int
+  max_devices int
+  features json
+  is_active boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Branding visual referencia event_resources; no guarda URLs arbitrarias.'
+}
+
+Table event_users {
+  id bigint [pk, increment]
+  event_id bigint [not null, ref: > events.id]
+  user_id bigint [not null, ref: > users.id]
+  role_id bigint [not null, ref: > roles.id]
+  created_at datetime [not null]
+}
+
+Table modes {
+  id bigint [pk, increment]
+  slug varchar(80) [not null, unique]
+  name varchar(120) [not null]
+  description text
+  is_default boolean [not null, default: false]
+}
+
+Table event_modes {
+  id bigint [pk, increment]
+  event_id bigint [not null, ref: > events.id]
+  mode_id bigint [not null, ref: > modes.id]
+  is_active boolean [not null, default: true]
+  order_index int [not null]
+  created_at datetime [not null]
+}
+
+Table mode_settings {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, ref: > event_modes.id]
+  key varchar(120) [not null]
+  value text
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table mode_photo_collage_config {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, unique, ref: > event_modes.id]
+  countdown_sec int
+  preview_time_sec int
+  repeat_allowed boolean
+  template_asset_id bigint [ref: > library_assets.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table mode_video_360_config {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, unique, ref: > event_modes.id]
+  duration_sec int
+  speed_profile json
+  reverse boolean
+  music_asset_id bigint [ref: > library_assets.id]
+  use_ultra_wide boolean
+  stabilization_level varchar(64)
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table mode_video_mensaje_config {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, unique, ref: > event_modes.id]
+  max_duration_sec int
+  video_quality varchar(64)
+  intro_asset_id bigint [ref: > library_assets.id]
+  outro_asset_id bigint [ref: > library_assets.id]
+  allow_download boolean
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table mode_gif_config {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, unique, ref: > event_modes.id]
+  duration_sec int
+  frame_rate int
+  loop boolean
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table devices {
+  id bigint [pk, increment]
+  code varchar(120) [not null, unique]
+  name varchar(180) [not null]
+  type varchar(32) [not null]
+  status varchar(32) [not null]
+  last_online datetime
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table device_sessions {
+  id bigint [pk, increment]
+  device_id bigint [not null, ref: > devices.id]
+  event_id bigint [not null, ref: > events.id]
+  started_by bigint [not null, ref: > users.id]
+  started_at datetime [not null]
+  ended_at datetime
+  status varchar(32) [not null]
+}
+
+Table assets {
+  id bigint [pk, increment]
+  public_hash char(25) [not null, unique]
+  event_id bigint [not null, ref: > events.id]
+  mode_id bigint [ref: > modes.id]
+  type varchar(32) [not null]
+  status varchar(32) [not null]
+  file_url varchar(2048) [not null]
+  thumbnail_url varchar(2048)
+  duration_sec int
+  size_bytes bigint
+  metadata json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table asset_event_resources {
+  id bigint [pk, increment]
+  asset_id bigint [not null, ref: > assets.id]
+  event_resource_id bigint [not null, ref: > event_resources.id]
+  order_index int [not null]
+  created_at datetime [not null]
+  indexes { (asset_id, event_resource_id) [unique] }
+}
+
+Table asset_versions {
+  id bigint [pk, increment]
+  asset_id bigint [not null, ref: > assets.id]
+  version int [not null]
+  file_url varchar(2048) [not null]
+  created_at datetime [not null]
+}
+
+Table deliveries {
+  id bigint [pk, increment]
+  asset_id bigint [not null, ref: > assets.id]
+  method varchar(32) [not null]
+  url varchar(2048)
+  qr_code_url varchar(2048)
+  delivered_at datetime
+}
+
+Table portal_visits {
+  id bigint [pk, increment]
+  asset_id bigint [not null, ref: > assets.id]
+  ip varchar(64)
+  user_agent varchar(255)
+  visited_at datetime [not null]
+}
+
+Table downloads {
+  id bigint [pk, increment]
+  asset_id bigint [not null, ref: > assets.id]
+  downloaded_at datetime [not null]
+  ip varchar(64)
+}
+
+Table subscription_plans {
+  id bigint [pk, increment]
+  slug varchar(80) [not null, unique]
+  name varchar(120) [not null]
+  description text
+  limits json
+  is_active boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table subscriptions {
+  id bigint [pk, increment]
+  account_id bigint [not null, ref: > accounts.id]
+  plan_id bigint [not null, ref: > subscription_plans.id]
+  status varchar(32) [not null, note: 'trialing | active | past_due | canceled | suspended']
+  starts_at datetime [not null]
+  ends_at datetime
+  canceled_at datetime
+  provider varchar(32)
+  provider_customer_id varchar(180)
+  provider_subscription_id varchar(180)
+  metadata json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { account_id }
+  Note: 'La suscripcion siempre cuelga de la cuenta, nunca del usuario.'
+}
+
+Table library_asset_categories {
+  id bigint [pk, increment]
+  slug varchar(120) [not null, unique]
+  name varchar(180) [not null]
+  description text
+  is_active boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table library_assets {
+  id bigint [pk, increment]
+  category_id bigint [ref: > library_asset_categories.id]
+  owner_type varchar(32) [not null, note: 'viralco | account']
+  owner_account_id bigint [ref: > accounts.id]
+  source_asset_id bigint [ref: > library_assets.id]
+  name varchar(180) [not null]
+  type varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | other']
+  storage_key varchar(1024) [not null, unique]
+  file_url varchar(2048) [not null]
+  preview_url varchar(2048)
+  mime_type varchar(120)
+  size_bytes bigint
+  tags json
+  metadata json
+  status varchar(32) [not null, note: 'draft | active | archived']
+  created_by bigint [not null, ref: > users.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Tabla unica de recursos. owner_type=viralco para biblioteca global; owner_type=account para clones/recursos propios de cuenta.'
+}
+
+Table account_library {
+  id bigint [pk, increment]
+  account_id bigint [not null, ref: > accounts.id]
+  library_asset_id bigint [not null, ref: > library_assets.id]
+  display_name varchar(180)
+  notes text
+  added_by bigint [not null, ref: > users.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { (account_id, library_asset_id) [unique] }
+  Note: 'Coleccion privada de la cuenta. Referencia recursos globales sin duplicar archivos; si se personaliza, se clona en library_assets con owner account.'
+}
+
+Table event_resources {
+  id bigint [pk, increment]
+  event_id bigint [not null, ref: > events.id]
+  library_asset_id bigint [not null, ref: > library_assets.id]
+  event_mode_id bigint [ref: > event_modes.id]
+  purpose varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | branding | other']
+  placement varchar(32)
+  config json
+  order_index int [not null, default: 0]
+  is_active boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { (event_id, purpose, order_index) }
+  Note: 'Recursos consumidos por un evento. No duplica archivos; solo referencia library_assets.'
+}
+
+Table audit_logs {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  action varchar(160) [not null]
+  entity varchar(80)
+  entity_id bigint
+  meta json
+  created_at datetime [not null]
+}

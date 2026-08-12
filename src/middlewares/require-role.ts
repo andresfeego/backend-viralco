@@ -8,12 +8,12 @@ export function requireRole(roleSlug: string) {
       return;
     }
 
-    if (user.estado !== 'active') {
+    if (user.status?.slug !== 'active') {
       jsonError(res, 403, 'Usuario sin acceso activo');
       return;
     }
 
-    const hasRole = Array.isArray(user.roles) && user.roles.some((role: any) => role.slug === roleSlug);
+    const hasRole = Array.isArray(user.globalRoles) && user.globalRoles.some((role: any) => role.slug === roleSlug);
     if (!hasRole) {
       jsonError(res, 403, `Rol requerido: ${roleSlug}`);
       return;

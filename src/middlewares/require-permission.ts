@@ -8,7 +8,7 @@ export function requirePermission(permissionSlug: string) {
       return;
     }
 
-    if (user.estado !== 'active') {
+    if (user.status?.slug !== 'active') {
       jsonError(res, 403, 'Usuario sin acceso activo');
       return;
     }

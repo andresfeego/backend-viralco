@@ -1,8 +1,9 @@
 import { and, eq, gt } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { passwordResetTokensTable, refreshTokensTable } from '../db/schema.ts';
+import type { EntityId } from '../lib/ids.ts';
 
-export async function createRefreshTokenRecord(userId: number, token: string, expiresAt: Date) {
+export async function createRefreshTokenRecord(userId: EntityId, token: string, expiresAt: Date) {
   await db.insert(refreshTokensTable).values({
     userId,
     token,
@@ -35,11 +36,11 @@ export async function revokeRefreshTokenByHash(tokenHash: string) {
     .where(eq(refreshTokensTable.token, tokenHash));
 }
 
-export async function revokeAllRefreshTokensByUserId(userId: number) {
+export async function revokeAllRefreshTokensByUserId(userId: EntityId) {
   await db.update(refreshTokensTable).set({ revoked: true }).where(eq(refreshTokensTable.userId, userId));
 }
 
-export async function createPasswordResetTokenRecord(userId: number, tokenHash: string, expiresAt: Date) {
+export async function createPasswordResetTokenRecord(userId: EntityId, tokenHash: string, expiresAt: Date) {
   await db
     .update(passwordResetTokensTable)
     .set({ used: true })
@@ -70,6 +71,6 @@ export async function findValidPasswordResetToken(tokenHash: string) {
   return row || null;
 }
 
-export async function markPasswordResetTokenAsUsed(id: number) {
+export async function markPasswordResetTokenAsUsed(id: EntityId) {
   await db.update(passwordResetTokensTable).set({ used: true }).where(eq(passwordResetTokensTable.id, id));
 }
