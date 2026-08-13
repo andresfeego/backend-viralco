@@ -5,6 +5,7 @@ import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess } from './account-access.service.ts';
 import { assertAssetAvailableForEventAccount, mapLibraryAsset } from './library.service.ts';
+import { assertAccountCanCreateEvent } from './subscriptions.service.ts';
 
 const EVENT_STATUS = new Set(['draft', 'active', 'archived']);
 const RESOURCE_PURPOSES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'other']);
@@ -153,6 +154,7 @@ async function modeIdsFromInput(modeSlugsValue: unknown) {
 export async function createEvent(accountIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
   await assertAccountAccess(accountId, requester, 'write', 'events.create');
+  await assertAccountCanCreateEvent(accountId);
   const name = String(input?.name || '').trim();
   const slug = normalizeSlug(String(input?.slug || '').trim() || name);
   const startDate = assertDateOrNull(input?.startDate ?? input?.eventDate, 'startDate');

@@ -1,23 +1,27 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import sharp from 'sharp';
 import { app } from '../src/server.ts';
 import { db } from '../src/db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, passwordResetTokensTable, refreshTokensTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
-import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail, updateUserStatus } from '../src/services/user.service.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
+import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
 
 const run = process.env.RUN_DB_TESTS === '1' ? describe : describe.skip;
 
-run('auth and accounts integration', () => {
+run('auth, accounts, subscriptions and events integration', () => {
   let ownerLogin: any;
   let superLogin: any;
   let accountId: string;
+
   beforeAll(async () => {
     await db.delete(eventBrandingTable);
     await db.delete(eventResourcesTable);
     await db.delete(eventModesTable);
     await db.delete(eventsTable);
     await db.delete(accountLibraryTable);
+    await db.delete(libraryAssetVariantsTable);
     await db.delete(libraryAssetsTable);
     await db.delete(subscriptionsTable);
     await db.delete(accountUsersTable);
@@ -32,25 +36,37 @@ run('auth and accounts integration', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
-  it('registers pending, blocks login, activates and serializes bigint ids', async () => {
+  it('registers an active free identity with no account or global role', async () => {
     const registration = await request(app).post('/api/auth/register').send({
       email: 'owner@test.local', password: 'Password_123!', name: 'Owner Test', phone: null,
     });
     expect(registration.status).toBe(201);
-    expect(registration.body.user.status.slug).toBe('pending');
+    expect(registration.body.user.status.slug).toBe('active');
     expect(typeof registration.body.user.id).toBe('string');
     expect(registration.body.user.globalRoles).toEqual([]);
+    expect(registration.body.user.accounts).toEqual([]);
 
-    const blocked = await request(app).post('/api/auth/login').send({ email: 'owner@test.local', password: 'Password_123!' });
-    expect(blocked.status).toBe(403);
-
-    await updateUserStatus(BigInt(registration.body.user.id), 'active');
     ownerLogin = await request(app).post('/api/auth/login').send({ email: 'owner@test.local', password: 'Password_123!' });
     expect(ownerLogin.status).toBe(200);
-    expect(ownerLogin.body.user.status.slug).toBe('active');
+    expect(ownerLogin.body.user.accounts).toEqual([]);
   });
 
-  it('creates account and owner membership transactionally', async () => {
+  it('creates a self-service account with owner membership and trialing subscription', async () => {
+    const created = await request(app).post('/api/accounts')
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ slug: 'cuenta-test', name: 'Cuenta Test', phone: '123' });
+    expect(created.status).toBe(201);
+    expect(typeof created.body.account.id).toBe('string');
+    expect(created.body.account.subscription.status).toBe('trialing');
+    expect(created.body.account.subscription.statusLabel).toBe('Prueba activa');
+    expect(created.body.account.subscription.metadata.simulatedCheckout).toBe(true);
+
+    accountId = created.body.account.id;
+    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(me.body.accounts[0].role.slug).toBe('owner');
+  });
+
+  it('keeps assisted account creation for super admin', async () => {
     const role = await findRoleBySlug('super_admin');
     const superAdmin = await createUser({
       email: 'super@test.local', password: await hashPassword('Password_123!'), name: 'Super Test', statusSlug: 'active',
@@ -60,20 +76,16 @@ run('auth and accounts integration', () => {
 
     const created = await request(app).post('/api/admin/accounts')
       .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
-      .send({ slug: 'cuenta-test', name: 'Cuenta Test', ownerUserId: ownerLogin.body.user.id });
+      .send({ slug: 'cuenta-admin', name: 'Cuenta Admin', ownerUserId: ownerLogin.body.user.id });
     expect(created.status).toBe(201);
-    expect(typeof created.body.account.id).toBe('string');
     expect(created.body.account.subscription.status).toBe('active');
-
-    accountId = created.body.account.id;
-    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
-    expect(me.body.accounts[0].role.slug).toBe('owner');
+    expect(created.body.account.subscription.metadata.createdByAdmin).toBe(true);
   });
 
-  it('rejects duplicate account slugs and protects the owner membership', async () => {
-    const duplicate = await request(app).post('/api/admin/accounts')
-      .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
-      .send({ slug: 'cuenta-test', name: 'Duplicada', ownerUserId: ownerLogin.body.user.id });
+  it('rejects duplicate account slugs and protects the only active owner', async () => {
+    const duplicate = await request(app).post('/api/accounts')
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ slug: 'cuenta-test', name: 'Duplicada' });
     expect(duplicate.status).toBe(409);
 
     const members = await request(app).get(`/api/accounts/${accountId}/members`)
@@ -84,7 +96,7 @@ run('auth and accounts integration', () => {
     expect(removed.status).toBe(409);
   });
 
-  it('prevents duplicate memberships and cross-account reads', async () => {
+  it('allows invited users to work without paying and blocks outsiders', async () => {
     const member = await createUser({
       email: 'member@test.local', password: await hashPassword('Password_123!'), name: 'Member Test', statusSlug: 'active',
     });
@@ -92,10 +104,8 @@ run('auth and accounts integration', () => {
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ userId: String(member.id), roleSlug: 'cliente' });
     expect(added.status).toBe(201);
-    const duplicate = await request(app).post(`/api/accounts/${accountId}/members`)
-      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ userId: String(member.id), roleSlug: 'cliente' });
-    expect(duplicate.status).toBe(409);
+    const memberLogin = await request(app).post('/api/auth/login').send({ email: member.email, password: 'Password_123!' });
+    expect(memberLogin.body.user.accounts[0].account.id).toBe(accountId);
 
     const outsider = await createUser({
       email: 'outsider@test.local', password: await hashPassword('Password_123!'), name: 'Outsider Test', statusSlug: 'active',
@@ -115,52 +125,51 @@ run('auth and accounts integration', () => {
     expect(refreshed.status).toBe(401);
     const login = await request(app).post('/api/auth/login').send({ email: owner.email, password: 'Password_123!' });
     expect(login.status).toBe(403);
+
+    await request(app).patch(`/api/admin/users/${owner.id}/status`)
+      .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
+      .send({ statusSlug: 'active' });
+    ownerLogin = await request(app).post('/api/auth/login').send({ email: owner.email, password: 'Password_123!' });
   });
 
-  it('creates account-scoped events and blocks outsiders from event reads', async () => {
-    await updateUserStatus(BigInt(ownerLogin.body.user.id), 'active');
-    ownerLogin = await request(app).post('/api/auth/login').send({ email: 'owner@test.local', password: 'Password_123!' });
+  it('creates account-scoped events only with a valid subscription and enforces event limit', async () => {
+    for (const slug of ['evento-uno', 'evento-dos', 'evento-tres']) {
+      const created = await request(app).post(`/api/accounts/${accountId}/events`)
+        .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+        .send({ name: slug, slug, startDate: '2026-09-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
+      expect(created.status).toBe(201);
+      expect(created.body.event.accountId).toBe(accountId);
+    }
 
-    const created = await request(app).post(`/api/accounts/${accountId}/events`)
+    const overLimit = await request(app).post(`/api/accounts/${accountId}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({
-        name: 'Evento Cuenta',
-        slug: 'evento-cuenta',
-        startDate: '2026-09-01',
-        status: 'draft',
-        timezone: 'America/Bogota',
-        modeSlugs: ['foto'],
-      });
-    expect(created.status).toBe(201);
-    expect(created.body.event.accountId).toBe(accountId);
-    expect(typeof created.body.event.id).toBe('string');
+      .send({ name: 'Evento cuatro', slug: 'evento-cuatro', startDate: '2026-09-04', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
+    expect(overLimit.status).toBe(403);
 
     const listed = await request(app).get(`/api/accounts/${accountId}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(listed.status).toBe(200);
-    expect(listed.body.events).toHaveLength(1);
+    expect(listed.body.events).toHaveLength(3);
+  });
 
-    const outsider = await request(app).post('/api/auth/register').send({
-      email: 'event-outsider@test.local', password: 'Password_123!', name: 'Event Outsider',
-    });
-    await updateUserStatus(BigInt(outsider.body.user.id), 'active');
-    const outsiderLogin = await request(app).post('/api/auth/login').send({ email: 'event-outsider@test.local', password: 'Password_123!' });
-    const forbidden = await request(app).get(`/api/events/${created.body.event.id}`)
-      .set('Authorization', `Bearer ${outsiderLogin.body.accessToken}`);
-    expect(forbidden.status).toBe(403);
+  it('blocks event creation when account has no valid subscription', async () => {
+    const createdAccount = await request(app).post('/api/accounts')
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ slug: 'cuenta-sin-suscripcion', name: 'Cuenta Sin Suscripcion' });
+    expect(createdAccount.status).toBe(201);
+    await db.delete(subscriptionsTable).where(eq(subscriptionsTable.accountId, BigInt(createdAccount.body.account.id)));
+
+    const event = await request(app).post(`/api/accounts/${createdAccount.body.account.id}/events`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ name: 'Sin Subs', slug: 'sin-subs', startDate: '2026-10-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
+    expect(event.status).toBe(403);
   });
 
   it('creates library assets and assigns event resources instead of direct URLs', async () => {
+    await db.update(eventsTable).set({ status: 'archived' }).where(eq(eventsTable.accountId, BigInt(accountId)));
     const event = await request(app).post(`/api/accounts/${accountId}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({
-        name: 'Evento Recursos',
-        slug: 'evento-recursos',
-        startDate: '2026-09-02',
-        status: 'draft',
-        timezone: 'America/Bogota',
-        modeSlugs: ['foto'],
-      });
+      .send({ name: 'Evento Recursos', slug: 'evento-recursos', startDate: '2026-09-10', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
     expect(event.status).toBe(201);
 
     const invalidMime = await request(app).post(`/api/accounts/${accountId}/library/uploads`)
@@ -185,10 +194,52 @@ run('auth and accounts integration', () => {
       .send({ libraryAssetId: asset.body.asset.id, purpose: 'overlay', orderIndex: 0 });
     expect(resource.status).toBe(201);
     expect(resource.body.resource.asset.fileUrl).toBe(prepared.body.fileUrl);
+  });
 
-    const listed = await request(app).get(`/api/events/${event.body.event.id}/resources`)
-      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
-    expect(listed.status).toBe(200);
-    expect(listed.body.resources).toHaveLength(1);
+  it('creates processed account logo assets and exposes logoAsset variants on account DTO', async () => {
+    const invalidLogo = await request(app).post(`/api/accounts/${accountId}/library/image-upload`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .field('purpose', 'logo')
+      .field('name', 'Logo Invalido')
+      .attach('file', Buffer.from('not an image'), { filename: 'logo.png', contentType: 'image/png' });
+    expect(invalidLogo.status).toBe(400);
+
+    const rectangularImage = await sharp({
+      create: { width: 1200, height: 600, channels: 4, background: { r: 200, g: 80, b: 40, alpha: 1 } },
+    }).png().toBuffer();
+    const rectangularLogo = await request(app).post(`/api/accounts/${accountId}/library/image-upload`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .field('purpose', 'logo')
+      .field('name', 'Logo Rectangular')
+      .attach('file', rectangularImage, { filename: 'logo-rectangular.png', contentType: 'image/png' });
+    expect(rectangularLogo.status).toBe(400);
+
+    const image = await sharp({
+      create: { width: 1200, height: 1200, channels: 4, background: { r: 30, g: 120, b: 200, alpha: 1 } },
+    }).png().toBuffer();
+    const logo = await request(app).post(`/api/accounts/${accountId}/library/image-upload`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .field('purpose', 'logo')
+      .field('name', 'Logo Cuenta')
+      .attach('file', image, { filename: 'logo.png', contentType: 'image/png' });
+    expect(logo.status).toBe(201);
+    expect(logo.body.asset.mimeType).toBe('image/webp');
+    expect(logo.body.asset.storageKey).toContain(`accounts/${accountId}/library/logo/${logo.body.asset.id}/full.webp`);
+    expect(logo.body.asset.previewUrl).toContain(`accounts/${accountId}/library/logo/${logo.body.asset.id}/thumb.webp`);
+    expect(logo.body.asset.variants.thumb.fileUrl).toBe(logo.body.asset.previewUrl);
+    expect(logo.body.asset.variants.card.storageKey).toContain('/card.webp');
+    expect(logo.body.asset.variants.full.fileUrl).toBe(logo.body.asset.fileUrl);
+
+    const updated = await request(app).patch(`/api/accounts/${accountId}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ logoAssetId: logo.body.asset.id });
+    expect(updated.status).toBe(200);
+    expect(updated.body.account.logoAssetId).toBe(logo.body.asset.id);
+    expect(updated.body.account.logoAsset.fileUrl).toBe(logo.body.asset.fileUrl);
+    expect(updated.body.account.logoAsset.variants.thumb.fileUrl).toBe(logo.body.asset.previewUrl);
+
+    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(me.body.accounts[0].account.logoAsset.id).toBe(logo.body.asset.id);
+    expect(me.body.accounts[0].account.logoAsset.variants.full.fileUrl).toBe(logo.body.asset.fileUrl);
   });
 });

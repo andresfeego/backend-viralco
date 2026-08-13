@@ -1,9 +1,10 @@
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { accountsTable, accountUsersTable, permissionsTable, rolePermissionsTable, rolesTable, usersTable } from '../db/schema.ts';
+import { accountsTable, accountUsersTable, libraryAssetsTable, permissionsTable, rolePermissionsTable, rolesTable, usersTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess, findAccountById, findAccountMembership, getMembershipPermissions, isSuperAdmin } from './account-access.service.ts';
+import { getLibraryAssetWithVariants } from './library.service.ts';
 import { createAccountSubscription, getLatestAccountSubscription } from './subscriptions.service.ts';
 import { buildAuthUser, findRoleBySlug } from './user.service.ts';
 
@@ -11,10 +12,18 @@ const ACCOUNT_STATUSES = new Set(['active', 'suspended', 'canceled']);
 const MEMBER_STATUSES = new Set(['active', 'suspended']);
 const ASSIGNABLE_ROLES = new Set(['admin', 'operario', 'cliente']);
 
-function mapAccount(row: any, subscription?: any) {
+function normalizeOptionalEmail(value: unknown) {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email) return null;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ServiceError(400, 'Correo comercial invalido');
+  return email;
+}
+
+function mapAccount(row: any, subscription?: any, logoAsset?: any) {
   return {
     id: serializeId(row.id), slug: row.slug, name: row.name, logoAssetId: serializeId(row.logoAssetId),
-    phone: row.phone, ownerUserId: serializeId(row.ownerUserId), status: row.status,
+    logoAsset: logoAsset === undefined ? undefined : logoAsset,
+    phone: row.phone, email: row.email, ownerUserId: serializeId(row.ownerUserId), status: row.status,
     subscription: subscription === undefined ? undefined : subscription,
     createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
@@ -26,7 +35,30 @@ async function findAccountBySlug(slug: string) {
 }
 
 async function mapAccountWithSubscription(account: any) {
-  return mapAccount(account, await getLatestAccountSubscription(account.id));
+  const [subscription, logoAsset] = await Promise.all([
+    getLatestAccountSubscription(account.id),
+    getLibraryAssetWithVariants(account.logoAssetId),
+  ]);
+  return mapAccount(account, subscription, logoAsset);
+}
+
+async function assertLogoAssetAvailableForAccount(logoAssetId: EntityId | null, accountId: EntityId) {
+  if (!logoAssetId) return null;
+  const [asset] = await db.select().from(libraryAssetsTable).where(eq(libraryAssetsTable.id, logoAssetId)).limit(1);
+  if (!asset) throw new ServiceError(404, 'Logo no encontrado');
+  if (asset.type !== 'logo') throw new ServiceError(400, 'El recurso debe ser de tipo logo');
+  if (asset.ownerType === 'account' && asset.ownerAccountId !== accountId) throw new ServiceError(403, 'Logo no pertenece a la cuenta');
+  if (asset.ownerType !== 'account' && asset.ownerType !== 'viralco') throw new ServiceError(400, 'Owner de logo invalido');
+  return asset;
+}
+
+async function assertInitialLogoAsset(logoAssetId: EntityId | null) {
+  if (!logoAssetId) return null;
+  const [asset] = await db.select().from(libraryAssetsTable).where(eq(libraryAssetsTable.id, logoAssetId)).limit(1);
+  if (!asset) throw new ServiceError(404, 'Logo no encontrado');
+  if (asset.type !== 'logo') throw new ServiceError(400, 'El recurso debe ser de tipo logo');
+  if (asset.ownerType !== 'viralco') throw new ServiceError(400, 'En creacion inicial solo se permite un logo global');
+  return asset;
 }
 
 export async function listAccounts(requester: any) {
@@ -48,14 +80,17 @@ export async function getAccount(accountIdValue: unknown, requester: any) {
   return mapAccountWithSubscription(account);
 }
 
-export async function createAccount(input: any, requester: any) {
-  if (!isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
+async function createAccountRecord(input: any, requester: any, options: { ownerUserId?: EntityId; requireSuperAdmin: boolean; subscriptionStatus: string; subscriptionMetadata: any }) {
+  if (options.requireSuperAdmin && !isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
   const slug = String(input?.slug || '').trim().toLowerCase();
   const name = String(input?.name || '').trim();
-  const ownerUserId = parseEntityId(input?.ownerUserId, 'ID de propietario');
+  const ownerUserId = options.ownerUserId || parseEntityId(input?.ownerUserId, 'ID de propietario');
+  const email = normalizeOptionalEmail(input?.email);
+  const logoAssetId = input?.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null;
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new ServiceError(400, 'Slug invalido');
   if (!name) throw new ServiceError(400, 'Nombre de cuenta requerido');
   if (await findAccountBySlug(slug)) throw new ServiceError(409, 'El slug ya existe');
+  await assertInitialLogoAsset(logoAssetId);
   const owner = await buildAuthUser(ownerUserId);
   if (!owner) throw new ServiceError(404, 'Propietario no encontrado');
   if (owner.status.slug !== 'active') throw new ServiceError(409, 'El propietario debe estar activo');
@@ -65,20 +100,28 @@ export async function createAccount(input: any, requester: any) {
 
   return db.transaction(async (tx) => {
     const result = await tx.insert(accountsTable).values({
-      slug, name, logoAssetId: input?.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null,
-      phone: String(input?.phone || '').trim() || null, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
+      slug, name, logoAssetId,
+      phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
     });
     const accountId = BigInt(result[0]?.insertId || 0);
     await tx.insert(accountUsersTable).values({
       accountId, userId: ownerUserId, roleId: ownerRole.id, status: 'active',
       invitedBy: parseEntityId(requester.id), invitedAt: now, joinedAt: now, createdAt: now, updatedAt: now,
     });
-    const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'starter', status: 'active' }, tx);
+    const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'starter', status: options.subscriptionStatus, metadata: options.subscriptionMetadata }, tx);
     return mapAccount({
-      id: accountId, slug, name, logoAssetId: input?.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null,
-      phone: String(input?.phone || '').trim() || null, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
-    }, subscription);
+      id: accountId, slug, name, logoAssetId,
+      phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
+    }, subscription, null);
   });
+}
+
+export async function createAccount(input: any, requester: any) {
+  return createAccountRecord(input, requester, { requireSuperAdmin: true, subscriptionStatus: 'active', subscriptionMetadata: { createdByAdmin: true } });
+}
+
+export async function createSelfServiceAccount(input: any, requester: any) {
+  return createAccountRecord(input, requester, { ownerUserId: parseEntityId(requester.id), requireSuperAdmin: false, subscriptionStatus: 'trialing', subscriptionMetadata: { simulatedCheckout: true } });
 }
 
 export async function updateAccount(accountIdValue: unknown, input: any, requester: any) {
@@ -88,10 +131,13 @@ export async function updateAccount(accountIdValue: unknown, input: any, request
   if (!current) throw new ServiceError(404, 'Cuenta no encontrada');
   const name = input?.name === undefined ? current.name : String(input.name).trim();
   if (!name) throw new ServiceError(400, 'Nombre de cuenta requerido');
+  const logoAssetId = input?.logoAssetId === undefined ? current.logoAssetId : (input.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null);
+  await assertLogoAssetAvailableForAccount(logoAssetId, accountId);
   await db.update(accountsTable).set({
     name,
-    logoAssetId: input?.logoAssetId === undefined ? current.logoAssetId : (input.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null),
+    logoAssetId,
     phone: input?.phone === undefined ? current.phone : String(input.phone || '').trim() || null,
+    email: input?.email === undefined ? current.email : normalizeOptionalEmail(input.email),
     updatedAt: new Date(),
   }).where(eq(accountsTable.id, accountId));
   return mapAccountWithSubscription(await findAccountById(accountId));

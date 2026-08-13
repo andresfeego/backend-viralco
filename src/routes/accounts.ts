@@ -1,19 +1,23 @@
 import express from 'express';
-import { deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postMember } from '../controllers/accounts.controller.ts';
-import { getAccountLibrary, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryUpload } from '../controllers/library.controller.ts';
+import multer from 'multer';
+import { deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postAccountSelf, postMember } from '../controllers/accounts.controller.ts';
+import { getAccountLibrary, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryImageUpload, postAccountLibraryUpload } from '../controllers/library.controller.ts';
 import { getAccountEvents, postAccountEvent } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
 
 const router = express.Router();
+const uploadImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
 router.use(requireAuth, requireActive);
 router.get('/', getAccounts);
+router.post('/', postAccountSelf);
 router.get('/:accountId', getAccountById);
 router.patch('/:accountId', patchAccount);
 router.get('/:accountId/events', getAccountEvents);
 router.post('/:accountId/events', postAccountEvent);
 router.get('/:accountId/library', getAccountLibrary);
 router.post('/:accountId/library/uploads', postAccountLibraryUpload);
+router.post('/:accountId/library/image-upload', uploadImage.single('file'), postAccountLibraryImageUpload);
 router.post('/:accountId/library/assets', postAccountLibraryAsset);
 router.post('/:accountId/library', postAccountLibraryEntry);
 router.post('/:accountId/library/:libraryAssetId/clone', postAccountLibraryClone);

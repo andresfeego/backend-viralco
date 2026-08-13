@@ -66,6 +66,7 @@ export const accountsTable = mysqlTable(
     name: varchar('name', { length: 180 }).notNull(),
     logoAssetId: bigint('logo_asset_id', { mode: 'bigint', unsigned: true }),
     phone: varchar('phone', { length: 64 }),
+    email: varchar('email', { length: 255 }),
     ownerUserId: bigint('owner_user_id', { mode: 'bigint', unsigned: true }).notNull(),
     status: varchar('status', { length: 32 }).notNull().default('active'),
     createdAt: datetime('created_at').notNull(),
@@ -280,6 +281,27 @@ export const libraryAssetsTable = mysqlTable(
     uniqueIndex('library_assets_storage_key_uq').on(table.storageKey),
     index('library_assets_owner_idx').on(table.ownerType, table.ownerAccountId),
     index('library_assets_type_idx').on(table.type),
+  ]
+);
+
+export const libraryAssetVariantsTable = mysqlTable(
+  'library_asset_variants',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    assetId: bigint('asset_id', { mode: 'bigint', unsigned: true }).notNull(),
+    variant: varchar('variant', { length: 32 }).notNull(),
+    storageKey: varchar('storage_key', { length: 1024 }).notNull(),
+    fileUrl: varchar('file_url', { length: 2048 }).notNull(),
+    mimeType: varchar('mime_type', { length: 120 }).notNull(),
+    width: int('width'),
+    height: int('height'),
+    sizeBytes: bigint('size_bytes', { mode: 'bigint', unsigned: true }),
+    createdAt: datetime('created_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('library_asset_variants_asset_variant_uq').on(table.assetId, table.variant),
+    uniqueIndex('library_asset_variants_storage_key_uq').on(table.storageKey),
+    index('library_asset_variants_asset_idx').on(table.assetId),
   ]
 );
 

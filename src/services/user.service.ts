@@ -12,6 +12,7 @@ import {
 } from '../db/schema.ts';
 import { serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
+import { getLibraryAssetWithVariants } from './library.service.ts';
 
 export async function findUserStatusBySlug(slug: string) {
   const [status] = await db.select().from(userStatusesTable).where(eq(userStatusesTable.slug, slug)).limit(1);
@@ -83,6 +84,7 @@ export async function getUserAccounts(userId: EntityId) {
     accountId: accountsTable.id,
     slug: accountsTable.slug,
     name: accountsTable.name,
+    logoAssetId: accountsTable.logoAssetId,
     accountStatus: accountsTable.status,
     roleId: rolesTable.id,
     roleSlug: rolesTable.slug,
@@ -92,12 +94,19 @@ export async function getUserAccounts(userId: EntityId) {
     .innerJoin(rolesTable, eq(accountUsersTable.roleId, rolesTable.id))
     .where(eq(accountUsersTable.userId, userId));
 
-  return rows.map((row) => ({
+  return Promise.all(rows.map(async (row) => ({
     membershipId: serializeId(row.membershipId),
     status: row.membershipStatus,
-    account: { id: serializeId(row.accountId), slug: row.slug, name: row.name, status: row.accountStatus },
+    account: {
+      id: serializeId(row.accountId),
+      slug: row.slug,
+      name: row.name,
+      logoAssetId: serializeId(row.logoAssetId),
+      logoAsset: await getLibraryAssetWithVariants(row.logoAssetId),
+      status: row.accountStatus,
+    },
     role: { id: serializeId(row.roleId), slug: row.roleSlug, name: row.roleName },
-  }));
+  })));
 }
 
 async function getStatus(statusId: EntityId) {

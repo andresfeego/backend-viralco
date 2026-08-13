@@ -1,6 +1,6 @@
 import { jsonError } from '../lib/http.ts';
 import { serviceErrorStatus } from '../lib/service-error.ts';
-import { addMember, getAccount, listAccounts, listMembers, removeMember, updateAccount, updateMember } from '../services/accounts.service.ts';
+import { addMember, createSelfServiceAccount, getAccount, listAccounts, listMembers, removeMember, updateAccount, updateMember } from '../services/accounts.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
   jsonError(res, serviceErrorStatus(error), error instanceof Error ? error.message : fallback);
@@ -9,6 +9,10 @@ function sendError(res: any, error: unknown, fallback: string) {
 export async function getAccounts(req: any, res: any) {
   try { res.status(200).json({ accounts: await listAccounts(req.authUser) }); }
   catch (error) { sendError(res, error, 'No se pudieron listar cuentas'); }
+}
+export async function postAccountSelf(req: any, res: any) {
+  try { res.status(201).json({ account: await createSelfServiceAccount(req.body || {}, req.authUser) }); }
+  catch (error) { sendError(res, error, 'No se pudo crear cuenta'); }
 }
 export async function getAccountById(req: any, res: any) {
   try { res.status(200).json({ account: await getAccount(req.params.accountId, req.authUser) }); }

@@ -8,7 +8,7 @@
     "build": "node scripts/build.mjs",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "test:integration": "RUN_DB_TESTS=1 vitest run tests/auth-accounts.integration.test.ts",
+    "test:integration": "sh -c 'RUN_DB_TESTS=1 vitest run tests/auth-accounts.integration.test.ts; status=$?; knex seed:run --knexfile knexfile.cjs; exit $status'",
     "db:migrate": "knex migrate:latest --knexfile knexfile.cjs",
     "db:rollback": "knex migrate:rollback --knexfile knexfile.cjs",
     "db:seed": "knex seed:run --knexfile knexfile.cjs",
@@ -31,15 +31,19 @@
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "file-type": "^22.0.1",
+    "heic-convert": "^2.1.0",
     "jsonwebtoken": "^9.0.3",
     "knex": "^3.1.0",
-    "mysql2": "^3.12.0"
+    "multer": "^2.2.0",
+    "mysql2": "^3.12.0",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@softwaretechnik/dbml-renderer": "^1.0.31",
+    "@types/multer": "^2.2.0",
     "@types/supertest": "^7.2.1",
     "esbuild": "^0.27.2",
-    "sharp": "^0.35.3",
     "supertest": "^7.2.2",
     "tsx": "^4.19.4",
     "vitest": "^4.1.10"

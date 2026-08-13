@@ -4,6 +4,7 @@ import {
   addAssetToAccountLibrary,
   cloneAssetForAccount,
   createLibraryAsset,
+  createProcessedLibraryImageAsset,
   listAccountLibrary,
   listLibraryAssets,
   prepareAccountLibraryUpload,
@@ -29,6 +30,11 @@ export async function postGlobalLibraryAsset(req: any, res: any) {
   catch (error) { sendError(res, error, 'No se pudo crear recurso global'); }
 }
 
+export async function postGlobalLibraryImageUpload(req: any, res: any) {
+  try { res.status(201).json({ asset: await createProcessedLibraryImageAsset(req.body || {}, req.file, req.authUser, { ownerType: 'viralco' }) }); }
+  catch (error) { sendError(res, error, 'No se pudo procesar imagen global'); }
+}
+
 export async function getAccountLibrary(req: any, res: any) {
   try { res.status(200).json({ library: await listAccountLibrary(req.params.accountId, req.authUser) }); }
   catch (error) { sendError(res, error, 'No se pudo listar biblioteca de cuenta'); }
@@ -45,6 +51,15 @@ export async function postAccountLibraryAsset(req: any, res: any) {
     await addAssetToAccountLibrary(req.params.accountId, { libraryAssetId: asset?.id, displayName: req.body?.displayName }, req.authUser);
     res.status(201).json({ asset });
   } catch (error) { sendError(res, error, 'No se pudo crear recurso de cuenta'); }
+}
+
+export async function postAccountLibraryImageUpload(req: any, res: any) {
+  try {
+    const accountId = BigInt(String(req.params.accountId));
+    const asset = await createProcessedLibraryImageAsset(req.body || {}, req.file, req.authUser, { ownerType: 'account', accountId });
+    await addAssetToAccountLibrary(req.params.accountId, { libraryAssetId: asset?.id, displayName: req.body?.displayName || req.body?.name }, req.authUser);
+    res.status(201).json({ asset });
+  } catch (error) { sendError(res, error, 'No se pudo procesar imagen de cuenta'); }
 }
 
 export async function postAccountLibraryEntry(req: any, res: any) {

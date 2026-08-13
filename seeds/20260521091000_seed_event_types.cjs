@@ -19,6 +19,13 @@ const PLANS = [
     limits: JSON.stringify({ events: 25, storageGb: 250, devices: 10 }),
     is_active: true,
   },
+  {
+    slug: 'business',
+    name: 'Business',
+    description: 'Plan ficticio para validar cuentas con mayor volumen',
+    limits: JSON.stringify({ events: 100, storageGb: 1000, devices: 25 }),
+    is_active: true,
+  },
 ];
 
 const CATEGORIES = [

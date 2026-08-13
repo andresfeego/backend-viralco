@@ -75,6 +75,22 @@ exports.up = async function up(knex) {
     table.index(['type'], 'library_assets_type_idx');
   });
 
+  await knex.schema.createTable('library_asset_variants', (table) => {
+    table.bigIncrements('id').unsigned().primary();
+    table.bigInteger('asset_id').unsigned().notNullable();
+    table.string('variant', 32).notNullable();
+    table.string('storage_key', 1024).notNullable().unique();
+    table.string('file_url', 2048).notNullable();
+    table.string('mime_type', 120).notNullable();
+    table.integer('width').nullable();
+    table.integer('height').nullable();
+    table.bigInteger('size_bytes').unsigned().nullable();
+    table.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+    table.unique(['asset_id', 'variant'], { indexName: 'library_asset_variants_asset_variant_uq' });
+    table.foreign('asset_id').references('library_assets.id').onDelete('CASCADE');
+    table.index(['asset_id'], 'library_asset_variants_asset_idx');
+  });
+
   await knex.schema.alterTable('accounts', (table) => {
     table.foreign('logo_asset_id').references('library_assets.id').onDelete('SET NULL');
   });
@@ -190,6 +206,7 @@ exports.down = async function down(knex) {
   await knex.schema.alterTable('accounts', (table) => {
     table.dropForeign(['logo_asset_id']);
   });
+  await knex.schema.dropTableIfExists('library_asset_variants');
   await knex.schema.dropTableIfExists('library_assets');
   await knex.schema.dropTableIfExists('library_asset_categories');
   await knex.schema.dropTableIfExists('subscriptions');

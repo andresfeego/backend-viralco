@@ -53,6 +53,7 @@ Table accounts {
   name varchar(180) [not null]
   logo_asset_id bigint [ref: > library_assets.id]
   phone varchar(64)
+  email varchar(255)
   owner_user_id bigint [not null, ref: > users.id]
   status varchar(32) [not null, default: 'active', note: 'active | suspended | canceled']
   created_at datetime [not null]
@@ -341,6 +342,21 @@ Table library_assets {
   created_at datetime [not null]
   updated_at datetime [not null]
   Note: 'Tabla unica de recursos. owner_type=viralco para biblioteca global; owner_type=account para clones/recursos propios de cuenta.'
+}
+
+Table library_asset_variants {
+  id bigint [pk, increment]
+  asset_id bigint [not null, ref: > library_assets.id]
+  variant varchar(32) [not null, note: 'thumb | card | full']
+  storage_key varchar(1024) [not null, unique]
+  file_url varchar(2048) [not null]
+  mime_type varchar(120) [not null]
+  width int
+  height int
+  size_bytes bigint
+  created_at datetime [not null]
+  indexes { (asset_id, variant) [unique] }
+  Note: 'Variantes optimizadas de imagen generadas por backend. library_assets.file_url apunta a full y preview_url apunta a thumb.'
 }
 
 Table account_library {

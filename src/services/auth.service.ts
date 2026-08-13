@@ -61,11 +61,11 @@ export async function registerUser(input: any) {
   assertName(name);
   if (await findUserByEmail(email)) throw new ServiceError(409, 'El correo ya esta registrado');
 
-  const user = await createUser({ email, password: await hashPassword(password), name, phone, statusSlug: 'pending' });
+  const user = await createUser({ email, password: await hashPassword(password), name, phone, statusSlug: 'active' });
   if (!user) throw new ServiceError(500, 'No se pudo crear usuario');
   return {
     user: await buildAuthUser(user.id),
-    message: 'Registro exitoso. Tu cuenta esta pendiente de aprobacion por Super Admin.',
+    message: 'Registro exitoso. Ya puedes iniciar sesion y crear o unirte a una cuenta.',
   };
 }
 

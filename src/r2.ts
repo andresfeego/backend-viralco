@@ -17,7 +17,7 @@ export const LIBRARY_PURPOSES = new Set([
   'other',
 ]);
 
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
 const AUDIO_TYPES = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4']);
 const VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -87,6 +87,11 @@ export function buildLibraryUploadKey(input: { scope: 'viralco' | 'account'; acc
   return `${prefix}/${input.purpose}/${randomUUID()}-${input.fileName}`;
 }
 
+export function buildLibraryAssetVariantKey(input: { scope: 'viralco' | 'account'; accountId?: string; purpose: string; assetId: string; variant: string }) {
+  const prefix = input.scope === 'viralco' ? 'viralco/library' : `accounts/${input.accountId}/library`;
+  return `${prefix}/${input.purpose}/${input.assetId}/${input.variant}.webp`;
+}
+
 export function r2PublicUrl(key: string) {
   const basePath = requiredEnv('R2_BUCKET_PATH').replace(/\/+$/g, '');
   return `${basePath}/${key}`;
@@ -114,4 +119,14 @@ export async function createPresignedLibraryUpload(input: {
   });
   const uploadUrl = await getSignedUrl(r2, command, { expiresIn: SIGNED_UPLOAD_EXPIRES_IN });
   return { uploadUrl, method: 'PUT', key, fileUrl: r2PublicUrl(key), expiresIn: SIGNED_UPLOAD_EXPIRES_IN };
+}
+
+export async function putR2Object(input: { key: string; body: Buffer; contentType: string }) {
+  await r2.send(new PutObjectCommand({
+    Bucket: requiredEnv('R2_BUCKET_NAME'),
+    Key: input.key,
+    Body: input.body,
+    ContentType: input.contentType,
+  }));
+  return { key: input.key, fileUrl: r2PublicUrl(input.key) };
 }
