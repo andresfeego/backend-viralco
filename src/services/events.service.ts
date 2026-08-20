@@ -1,6 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, modesTable } from '../db/schema.ts';
+import { eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, modesTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess } from './account-access.service.ts';
@@ -41,6 +41,11 @@ function assertPositiveInt(value: unknown, label: string, fallback = 0) {
 async function findEvent(eventId: EntityId) {
   const [event] = await db.select().from(eventsTable).where(eq(eventsTable.id, eventId)).limit(1);
   return event || null;
+}
+
+async function findEventTypeById(eventTypeId: EntityId) {
+  const [eventType] = await db.select().from(eventTypesTable).where(eq(eventTypesTable.id, eventTypeId)).limit(1);
+  return eventType || null;
 }
 
 async function assertEventAccess(eventId: EntityId, requester: any, mode: 'read' | 'write') {
@@ -104,9 +109,11 @@ async function mapBranding(branding: any) {
 }
 
 async function mapEventRow(row: any) {
-  const [branding, modes] = await Promise.all([getBranding(row.id), getEventModes(row.id)]);
+  const [branding, modes, eventType] = await Promise.all([getBranding(row.id), getEventModes(row.id), findEventTypeById(row.eventTypeId)]);
   return {
     id: serializeId(row.id), accountId: serializeId(row.accountId), slug: row.slug, name: row.name,
+    eventTypeId: serializeId(row.eventTypeId),
+    eventType: eventType ? { id: serializeId(eventType.id), slug: eventType.slug, name: eventType.name, description: eventType.description } : null,
     description: row.description || '', startDate: row.startDate || null, endDate: row.endDate || null,
     eventDate: row.startDate || null, status: row.status, timezone: row.timezone, createdBy: serializeId(row.createdBy),
     branding: await mapBranding(branding), modes, createdAt: row.createdAt, updatedAt: row.updatedAt,
@@ -118,7 +125,17 @@ export async function listModes() {
   return rows.map((row) => ({ id: serializeId(row.id), slug: row.slug, name: row.name, description: row.description, isDefault: Boolean(row.isDefault) }));
 }
 
-export const listEventTypes = listModes;
+export async function listEventTypes() {
+  const rows = await db.select().from(eventTypesTable).orderBy(asc(eventTypesTable.sortOrder), asc(eventTypesTable.name));
+  return rows.map((row) => ({
+    id: serializeId(row.id),
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    isActive: Boolean(row.isActive),
+    sortOrder: row.sortOrder,
+  }));
+}
 
 export async function listEventsByAccount(accountIdValue: unknown, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
@@ -140,6 +157,34 @@ async function assertUniqueSlug(accountId: EntityId, slug: string, skipEventId?:
   throw new ServiceError(409, 'Slug de evento ya existe');
 }
 
+async function uniqueSlugForAccount(accountId: EntityId, baseSlug: string, skipEventId?: EntityId) {
+  for (let index = 0; index < 100; index += 1) {
+    const candidate = index === 0 ? baseSlug : `${baseSlug}-${index + 1}`;
+    const [existing] = await db.select().from(eventsTable).where(and(eq(eventsTable.accountId, accountId), eq(eventsTable.slug, candidate))).limit(1);
+    if (!existing || (skipEventId && existing.id === skipEventId)) return candidate;
+  }
+  throw new ServiceError(409, 'No se pudo generar slug unico para el evento');
+}
+
+async function eventTypeFromInput(input: any, currentEventTypeId?: EntityId) {
+  const rawId = input?.eventTypeId ?? input?.typeId;
+  const rawSlug = String(input?.eventTypeSlug ?? input?.typeSlug ?? '').trim();
+  if (!rawId && !rawSlug && currentEventTypeId) {
+    const current = await findEventTypeById(currentEventTypeId);
+    if (!current) throw new ServiceError(400, 'Tipo de evento invalido');
+    return current;
+  }
+  if (rawId) {
+    const eventType = await findEventTypeById(parseEntityId(rawId, 'ID de tipo de evento'));
+    if (!eventType || !eventType.isActive) throw new ServiceError(400, 'Tipo de evento invalido');
+    return eventType;
+  }
+  if (!rawSlug) throw new ServiceError(400, 'Tipo de evento es requerido');
+  const [eventType] = await db.select().from(eventTypesTable).where(eq(eventTypesTable.slug, normalizeSlug(rawSlug))).limit(1);
+  if (!eventType || !eventType.isActive) throw new ServiceError(400, 'Tipo de evento invalido');
+  return eventType;
+}
+
 async function modeIdsFromInput(modeSlugsValue: unknown) {
   const requested = Array.isArray(modeSlugsValue) ? modeSlugsValue.map((value) => String(value).trim()).filter(Boolean) : [];
   const rows = await db.select().from(modesTable);
@@ -156,21 +201,23 @@ export async function createEvent(accountIdValue: unknown, input: any, requester
   await assertAccountAccess(accountId, requester, 'write', 'events.create');
   await assertAccountCanCreateEvent(accountId);
   const name = String(input?.name || '').trim();
-  const slug = normalizeSlug(String(input?.slug || '').trim() || name);
+  const eventType = await eventTypeFromInput(input);
   const startDate = assertDateOrNull(input?.startDate ?? input?.eventDate, 'startDate');
   const endDate = assertDateOrNull(input?.endDate, 'endDate');
   const status = String(input?.status || 'draft').trim();
   const description = String(input?.description || '').trim();
   const timezone = assertTimezone(input?.timezone);
   if (!name) throw new ServiceError(400, 'Nombre de evento es requerido');
+  if (!startDate) throw new ServiceError(400, 'Fecha de evento es requerida');
+  const slugBase = normalizeSlug(`${eventType.slug}-${name}-${startDate}`);
+  const slug = await uniqueSlugForAccount(accountId, slugBase);
   if (!slug) throw new ServiceError(400, 'Slug invalido');
   if (!EVENT_STATUS.has(status)) throw new ServiceError(400, 'status invalido');
-  await assertUniqueSlug(accountId, slug);
   const modes = await modeIdsFromInput(input?.modeSlugs);
   const now = new Date();
 
   const eventId = await db.transaction(async (tx) => {
-    const result = await tx.insert(eventsTable).values({ accountId, slug, name, description: description || null, startDate, endDate, status, timezone, createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
+    const result = await tx.insert(eventsTable).values({ accountId, eventTypeId: eventType.id, slug, name, description: description || null, startDate, endDate, status, timezone, createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
     const insertedEventId = BigInt(result[0]?.insertId || 0);
     if (!insertedEventId) throw new ServiceError(500, 'No se pudo crear evento');
     await tx.insert(eventBrandingTable).values({ eventId: insertedEventId, phone: String(input?.phone || '').trim() || null, createdAt: now, updatedAt: now });
@@ -184,17 +231,20 @@ export async function updateEvent(eventIdValue: unknown, input: any, requester: 
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   const current = await assertEventAccess(eventId, requester, 'write');
   const nextName = String(input?.name ?? current.name).trim();
-  const nextSlug = normalizeSlug(String(input?.slug ?? current.slug).trim() || nextName);
+  const nextEventType = await eventTypeFromInput(input, current.eventTypeId);
   const nextStartDate = input?.startDate === undefined && input?.eventDate === undefined ? current.startDate : assertDateOrNull(input?.startDate ?? input?.eventDate, 'startDate');
   const nextEndDate = input?.endDate === undefined ? current.endDate : assertDateOrNull(input?.endDate, 'endDate');
   const nextStatus = String(input?.status ?? current.status).trim();
   const nextDescription = String(input?.description ?? current.description ?? '').trim();
   const nextTimezone = input?.timezone === undefined ? current.timezone : assertTimezone(input?.timezone);
   if (!nextName) throw new ServiceError(400, 'Nombre de evento es requerido');
+  if (!nextStartDate) throw new ServiceError(400, 'Fecha de evento es requerida');
+  const regenerateSlug = nextName !== current.name || nextStartDate !== current.startDate || nextEventType.id !== current.eventTypeId;
+  const nextSlug = regenerateSlug ? await uniqueSlugForAccount(current.accountId, normalizeSlug(`${nextEventType.slug}-${nextName}-${nextStartDate}`), eventId) : current.slug;
   if (!nextSlug) throw new ServiceError(400, 'Slug invalido');
   if (!EVENT_STATUS.has(nextStatus)) throw new ServiceError(400, 'status invalido');
   await assertUniqueSlug(current.accountId, nextSlug, eventId);
-  await db.update(eventsTable).set({ name: nextName, slug: nextSlug, startDate: nextStartDate, endDate: nextEndDate, status: nextStatus, description: nextDescription || null, timezone: nextTimezone, updatedAt: new Date() }).where(eq(eventsTable.id, eventId));
+  await db.update(eventsTable).set({ eventTypeId: nextEventType.id, name: nextName, slug: nextSlug, startDate: nextStartDate, endDate: nextEndDate, status: nextStatus, description: nextDescription || null, timezone: nextTimezone, updatedAt: new Date() }).where(eq(eventsTable.id, eventId));
   return getEventById(eventId, requester);
 }
 

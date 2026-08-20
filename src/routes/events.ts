@@ -1,5 +1,5 @@
 import express from 'express';
-import { deleteResource, getEvent, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
+import { deleteResource, getEvent, getModes, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
 
@@ -7,7 +7,7 @@ const router = express.Router();
 router.use(requireAuth, requireActive);
 
 router.get('/types', getTypes);
-router.get('/modes', getTypes);
+router.get('/modes', getModes);
 router.get('/:id', getEvent);
 router.patch('/:id', patchEvent);
 router.patch('/:id/branding', patchEventBranding);

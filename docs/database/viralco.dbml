@@ -91,10 +91,22 @@ Table password_reset_tokens {
   used boolean [not null, default: false]
 }
 
+Table event_types {
+  id bigint [pk, increment]
+  slug varchar(80) [not null, unique, note: 'boda | cumpleanos | bautizo | quince-anos | grado | baby-shower | corporativo']
+  name varchar(120) [not null]
+  description text
+  is_active boolean [not null, default: true]
+  sort_order int [not null, default: 0]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
 Table events {
   id bigint [pk, increment]
   slug varchar(180) [not null]
   account_id bigint [not null, ref: > accounts.id]
+  event_type_id bigint [not null, ref: > event_types.id]
   name varchar(180) [not null]
   description text
   start_date date
@@ -104,7 +116,10 @@ Table events {
   created_by bigint [not null, ref: > users.id]
   created_at datetime [not null]
   updated_at datetime [not null]
-  indexes { (account_id, slug) [unique] }
+  indexes {
+    (account_id, slug) [unique]
+    event_type_id
+  }
 }
 
 Table event_branding {

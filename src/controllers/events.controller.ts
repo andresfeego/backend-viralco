@@ -7,6 +7,7 @@ import {
   getEventById,
   listEventResources,
   listEventsByAccount,
+  listEventTypes,
   listModes,
   updateEvent,
   updateEventBranding,
@@ -28,7 +29,12 @@ export async function postAccountEvent(req: any, res: any) {
 }
 
 export async function getTypes(_req: any, res: any) {
-  try { res.status(200).json({ modes: await listModes(), types: await listModes() }); }
+  try { res.status(200).json({ types: await listEventTypes() }); }
+  catch (error) { sendError(res, error, 'No se pudo listar tipos de evento'); }
+}
+
+export async function getModes(_req: any, res: any) {
+  try { res.status(200).json({ modes: await listModes() }); }
   catch (error) { sendError(res, error, 'No se pudo listar modos'); }
 }
 

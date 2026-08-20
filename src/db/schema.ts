@@ -134,12 +134,24 @@ export const bitacoraTable = mysqlTable('bitacora', {
   createdAt: datetime('created_at').notNull(),
 });
 
+export const eventTypesTable = mysqlTable('event_types', {
+  id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+  slug: varchar('slug', { length: 80 }).notNull().unique(),
+  name: varchar('name', { length: 120 }).notNull(),
+  description: text('description'),
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: int('sort_order').notNull().default(0),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+});
+
 export const eventsTable = mysqlTable(
   'events',
   {
     id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
     slug: varchar('slug', { length: 180 }).notNull(),
     accountId: bigint('account_id', { mode: 'bigint', unsigned: true }).notNull(),
+    eventTypeId: bigint('event_type_id', { mode: 'bigint', unsigned: true }).notNull(),
     name: varchar('name', { length: 180 }).notNull(),
     description: text('description'),
     startDate: date('start_date', { mode: 'string' }),
@@ -154,6 +166,7 @@ export const eventsTable = mysqlTable(
     uniqueIndex('events_account_slug_uq').on(table.accountId, table.slug),
     index('events_account_status_idx').on(table.accountId, table.status),
     index('events_account_start_date_idx').on(table.accountId, table.startDate),
+    index('events_event_type_idx').on(table.eventTypeId),
   ]
 );
 
