@@ -1,5 +1,7 @@
 # Espejo magico: fases A y B
 
+> Este documento contiene el detalle técnico de A y B. El estado transversal A–H vive en [`espejo-magico-plan-maestro.md`](./espejo-magico-plan-maestro.md).
+
 ## Objetivo
 
 Esta especificacion define el contrato backend para configurar, publicar y lanzar localmente el modo `espejo`, y para seleccionar sus recursos desde la biblioteca de la cuenta. La captura, composicion, GIF final, eliminacion de fondo e impresion fisica pertenecen a fases posteriores.
