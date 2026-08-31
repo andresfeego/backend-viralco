@@ -1,0 +1,21 @@
+[
+  { "id": "template-boda", "source": "src/assets/plantillas/boda.png", "name": "Boda", "purpose": "template", "category": "templates" },
+  { "id": "template-cumple", "source": "src/assets/plantillas/cumple.png", "name": "Cumpleanos", "purpose": "template", "category": "templates" },
+  { "id": "template-fiesta", "source": "src/assets/plantillas/fiesta.png", "name": "Fiesta", "purpose": "template", "category": "templates" },
+  { "id": "template-navidad", "source": "src/assets/plantillas/navidad.png", "name": "Navidad", "purpose": "template", "category": "templates" },
+  { "id": "template-playa", "source": "src/assets/plantillas/playa.jpg", "name": "Playa", "purpose": "template", "category": "templates" },
+  { "id": "template-tropical", "source": "src/assets/plantillas/tropical.png", "name": "Tropical", "purpose": "template", "category": "templates" },
+  { "id": "frame-1", "source": "src/assets/frames/frame1.png", "name": "Marco 1", "purpose": "frame", "category": "frames" },
+  { "id": "frame-2", "source": "src/assets/frames/frame2.png", "name": "Marco 2", "purpose": "frame", "category": "frames" },
+  { "id": "frame-3", "source": "src/assets/frames/frame3.png", "name": "Marco 3", "purpose": "frame", "category": "frames" },
+  { "id": "animation-touch-start", "source": "public/animation-videos/01.touch-to-start.mp4", "name": "Tocar para iniciar", "purpose": "animation", "category": "animations", "stage": "start" },
+  { "id": "animation-get-ready", "source": "public/animation-videos/02.get-ready.mp4", "name": "Prepararse", "purpose": "animation", "category": "animations", "stage": "prepare" },
+  { "id": "animation-say-cheese", "source": "public/animation-videos/03.say-cheese.mp4", "name": "Sonrie", "purpose": "animation", "category": "animations", "stage": "capture" },
+  { "id": "animation-smile", "source": "public/animation-videos/04.smile.mp4", "name": "Sonrisa", "purpose": "animation", "category": "animations", "stage": "capture" },
+  { "id": "animation-last-one", "source": "public/animation-videos/05.last-one.mp4", "name": "Ultima foto", "purpose": "animation", "category": "animations", "stage": "capture" },
+  { "id": "animation-looking-good", "source": "public/animation-videos/06.looking-good.mp4", "name": "Muy bien", "purpose": "animation", "category": "animations", "stage": "review" },
+  { "id": "animation-best-smile", "source": "public/animation-videos/07.you-have-best-smile.mp4", "name": "La mejor sonrisa", "purpose": "animation", "category": "animations", "stage": "review" },
+  { "id": "animation-light-up", "source": "public/animation-videos/08.you-light-up.mp4", "name": "Iluminas", "purpose": "animation", "category": "animations", "stage": "review" },
+  { "id": "animation-model", "source": "public/animation-videos/09.do-you-model.mp4", "name": "Modelo", "purpose": "animation", "category": "animations", "stage": "review" },
+  { "id": "animation-processing", "source": "public/animation-videos/10.processing.mp4", "name": "Procesando", "purpose": "animation", "category": "animations", "stage": "processing" }
+]

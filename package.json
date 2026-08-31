@@ -14,6 +14,7 @@
     "db:seed": "knex seed:run --knexfile knexfile.cjs",
     "db:bootstrap-super-admin": "node scripts/bootstrap-super-admin.cjs",
     "db:diagram": "node scripts/render-db-diagram.cjs",
+    "assets:import:magic-mirror": "node scripts/import-magic-mirror-assets.cjs",
     "db:local:up": "docker compose -f docker-compose.mariadb.yml up -d",
     "db:local:down": "docker compose -f docker-compose.mariadb.yml down",
     "db:local:logs": "docker compose -f docker-compose.mariadb.yml logs -f mariadb",
