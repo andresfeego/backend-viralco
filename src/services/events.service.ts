@@ -50,10 +50,10 @@ async function findEventTypeById(eventTypeId: EntityId) {
   return eventType || null;
 }
 
-async function assertEventAccess(eventId: EntityId, requester: any, mode: 'read' | 'write') {
+async function assertEventAccess(eventId: EntityId, requester: any, mode: 'read' | 'write', permission?: string) {
   const event = await findEvent(eventId);
   if (!event) throw new ServiceError(404, 'Evento no encontrado');
-  await assertAccountAccess(event.accountId, requester, mode, mode === 'write' ? 'events.update' : 'events.view');
+  await assertAccountAccess(event.accountId, requester, mode, permission || (mode === 'write' ? 'events.update' : 'events.view'));
   return event;
 }
 
@@ -304,7 +304,7 @@ export async function listEventResources(eventIdValue: unknown, requester: any) 
 
 export async function createEventResource(eventIdValue: unknown, input: any, requester: any) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
-  const event = await assertEventAccess(eventId, requester, 'write');
+  const event = await assertEventAccess(eventId, requester, 'write', 'events.resources.manage');
   const libraryAssetId = parseEntityId(input?.libraryAssetId, 'ID de recurso');
   await assertAssetAvailableForEventAccount(libraryAssetId, event.accountId);
   const purpose = String(input?.purpose || '').trim();
@@ -329,7 +329,7 @@ export async function createEventResource(eventIdValue: unknown, input: any, req
 export async function updateEventResource(eventIdValue: unknown, resourceIdValue: unknown, input: any, requester: any) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   const resourceId = parseEntityId(resourceIdValue, 'ID de recurso de evento');
-  await assertEventAccess(eventId, requester, 'write');
+  await assertEventAccess(eventId, requester, 'write', 'events.resources.manage');
   const current = await assertResourceBelongsToEvent(resourceId, eventId);
   const patch: any = { updatedAt: new Date() };
   if (input?.purpose !== undefined) {
@@ -348,7 +348,7 @@ export async function updateEventResource(eventIdValue: unknown, resourceIdValue
 export async function deleteEventResource(eventIdValue: unknown, resourceIdValue: unknown, requester: any) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   const resourceId = parseEntityId(resourceIdValue, 'ID de recurso de evento');
-  await assertEventAccess(eventId, requester, 'write');
+  await assertEventAccess(eventId, requester, 'write', 'events.resources.manage');
   await assertResourceBelongsToEvent(resourceId, eventId);
   await db.delete(eventResourcesTable).where(eq(eventResourcesTable.id, resourceId));
   return { deleted: true };

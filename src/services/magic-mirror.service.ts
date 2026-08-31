@@ -231,6 +231,7 @@ export async function saveMirrorConfig(eventIdValue: unknown, eventModeIdValue: 
   if (Number(input?.schemaVersion) !== MIRROR_SCHEMA_VERSION) throw new ServiceError(400, 'Version de configuracion no soportada');
   const validation = await fullValidation(context, input?.config, false);
   if (!validation.valid) throw new ServiceError(400, JSON.stringify({ code: 'CONFIG_INVALID', errors: validation.errors }));
+  if (resourceIds(input?.config).length) await assertAccountAccess(context.event.accountId, requester, 'write', 'events.resources.manage');
   const expectedRevision = Number(input?.expectedRevision);
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new ServiceError(400, 'expectedRevision invalida');
   const [current] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);
@@ -285,7 +286,7 @@ export async function startMirrorSession(eventIdValue: unknown, eventModeIdValue
   const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'capture.operate');
   const clientSessionId = String(input?.clientSessionId || '').trim();
   const deviceInstallationId = String(input?.deviceInstallationId || '').trim();
-  if (!/^[A-Za-z0-9_-]{8,80}$/.test(clientSessionId)) throw new ServiceError(400, 'clientSessionId invalido');
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientSessionId)) throw new ServiceError(400, 'clientSessionId debe ser UUID');
   if (!/^[A-Za-z0-9_.-]{3,120}$/.test(deviceInstallationId)) throw new ServiceError(400, 'deviceInstallationId invalido');
   const [existing] = await db.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.clientSessionId, clientSessionId)).limit(1);
   if (existing) {

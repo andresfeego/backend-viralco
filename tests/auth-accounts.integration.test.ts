@@ -253,7 +253,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(published.status).toBe(201);
     expect(published.body.version.version).toBe(1);
 
-    const sessionInput = { clientSessionId: 'session-test-0001', deviceInstallationId: 'ios-test-device' };
+    const sessionInput = { clientSessionId: '7db45da7-41d7-4ea7-9dc0-423bfbcb0bb8', deviceInstallationId: 'ios-test-device' };
     const session = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send(sessionInput);
