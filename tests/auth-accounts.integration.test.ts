@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { app } from '../src/server.ts';
 import { db } from '../src/db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
 import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
 
@@ -17,6 +17,9 @@ run('auth, accounts, subscriptions and events integration', () => {
 
   beforeAll(async () => {
     await db.delete(eventBrandingTable);
+    await db.delete(eventModeSessionsTable);
+    await db.delete(eventModeConfigsTable);
+    await db.delete(eventModeConfigVersionsTable);
     await db.delete(eventResourcesTable);
     await db.delete(eventModesTable);
     await db.delete(eventsTable);
@@ -175,26 +178,73 @@ run('auth, accounts, subscriptions and events integration', () => {
 
     const invalidMime = await request(app).post(`/api/accounts/${accountId}/library/uploads`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ purpose: 'overlay', fileName: 'overlay.pdf', contentType: 'application/pdf', sizeBytes: 100 });
+      .send({ purpose: 'template', fileName: 'overlay.pdf', contentType: 'application/pdf', sizeBytes: 100 });
     expect(invalidMime.status).toBe(400);
 
     const prepared = await request(app).post(`/api/accounts/${accountId}/library/uploads`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ purpose: 'overlay', fileName: 'overlay.png', contentType: 'image/png', sizeBytes: 100 });
+      .send({ purpose: 'template', fileName: 'overlay.png', contentType: 'image/png', sizeBytes: 100 });
     expect(prepared.status).toBe(200);
-    expect(prepared.body.key).toContain(`accounts/${accountId}/library/overlay/`);
+    expect(prepared.body.key).toContain(`accounts/${accountId}/library/template/`);
 
     const asset = await request(app).post(`/api/accounts/${accountId}/library/assets`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ name: 'Overlay Cuenta', type: 'overlay', key: prepared.body.key, fileUrl: prepared.body.fileUrl, mimeType: 'image/png', sizeBytes: 100 });
+      .send({ name: 'Plantilla Cuenta', type: 'template', key: prepared.body.key, fileUrl: prepared.body.fileUrl, mimeType: 'image/png', sizeBytes: 100 });
     expect(asset.status).toBe(201);
     expect(asset.body.asset.ownerType).toBe('account');
 
     const resource = await request(app).post(`/api/events/${event.body.event.id}/resources`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ libraryAssetId: asset.body.asset.id, purpose: 'overlay', orderIndex: 0 });
+      .send({ libraryAssetId: asset.body.asset.id, eventModeId: event.body.event.modes[0].id, purpose: 'template', orderIndex: 0 });
     expect(resource.status).toBe(201);
     expect(resource.body.resource.asset.fileUrl).toBe(prepared.body.fileUrl);
+
+    const configPath = `/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/config`;
+    const draft = await request(app).get(configPath).set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(draft.status).toBe(200);
+    expect(draft.body.config.revision).toBe(0);
+    draft.body.config.config.resources.templateResourceId = resource.body.resource.id;
+
+    const saved = await request(app).put(configPath)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ expectedRevision: 0, schemaVersion: 1, config: draft.body.config.config });
+    expect(saved.status).toBe(200);
+    expect(saved.body.config.revision).toBe(1);
+
+    const stale = await request(app).put(configPath)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ expectedRevision: 0, schemaVersion: 1, config: draft.body.config.config });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error).toBe('CONFIG_REVISION_CONFLICT');
+
+    const published = await request(app).post(`${configPath}/publish`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ expectedRevision: 1 });
+    expect(published.status).toBe(201);
+    expect(published.body.version.version).toBe(1);
+
+    const sessionInput = { clientSessionId: 'session-test-0001', deviceInstallationId: 'ios-test-device' };
+    const session = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send(sessionInput);
+    expect(session.status).toBe(201);
+    expect(session.body.session.status).toBe('preparing');
+    expect(session.body.manifest).toHaveLength(1);
+
+    const repeated = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send(sessionInput);
+    expect(repeated.body.session.id).toBe(session.body.session.id);
+
+    const running = await request(app).patch(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ status: 'running' });
+    expect(running.body.session.status).toBe('running');
+
+    const ended = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}/end`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ status: 'ended' });
+    expect(ended.body.session.status).toBe('ended');
   });
 
   it('creates processed account logo assets and exposes logoAsset variants on account DTO', async () => {

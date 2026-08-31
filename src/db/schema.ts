@@ -222,6 +222,57 @@ export const eventModesTable = mysqlTable(
   ]
 );
 
+export const eventModeConfigsTable = mysqlTable(
+  'event_mode_configs',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    eventModeId: bigint('event_mode_id', { mode: 'bigint', unsigned: true }).notNull(),
+    schemaVersion: int('schema_version').notNull().default(1),
+    revision: int('revision').notNull().default(1),
+    config: json('config').notNull(),
+    publishedVersionId: bigint('published_version_id', { mode: 'bigint', unsigned: true }),
+    updatedBy: bigint('updated_by', { mode: 'bigint', unsigned: true }).notNull(),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [uniqueIndex('event_mode_configs_mode_uq').on(table.eventModeId)]
+);
+
+export const eventModeConfigVersionsTable = mysqlTable(
+  'event_mode_config_versions',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    eventModeId: bigint('event_mode_id', { mode: 'bigint', unsigned: true }).notNull(),
+    version: int('version').notNull(),
+    schemaVersion: int('schema_version').notNull().default(1),
+    config: json('config').notNull(),
+    publishedBy: bigint('published_by', { mode: 'bigint', unsigned: true }).notNull(),
+    publishedAt: datetime('published_at').notNull(),
+  },
+  (table) => [uniqueIndex('event_mode_config_versions_mode_version_uq').on(table.eventModeId, table.version)]
+);
+
+export const eventModeSessionsTable = mysqlTable(
+  'event_mode_sessions',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    eventModeId: bigint('event_mode_id', { mode: 'bigint', unsigned: true }).notNull(),
+    configVersionId: bigint('config_version_id', { mode: 'bigint', unsigned: true }).notNull(),
+    clientSessionId: varchar('client_session_id', { length: 80 }).notNull().unique(),
+    deviceInstallationId: varchar('device_installation_id', { length: 120 }).notNull(),
+    startedBy: bigint('started_by', { mode: 'bigint', unsigned: true }).notNull(),
+    status: varchar('status', { length: 32 }).notNull().default('preparing'),
+    startedAt: datetime('started_at').notNull(),
+    endedAt: datetime('ended_at'),
+    lastHeartbeatAt: datetime('last_heartbeat_at'),
+    failureCode: varchar('failure_code', { length: 80 }),
+    metadata: json('metadata'),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [index('event_mode_sessions_mode_status_idx').on(table.eventModeId, table.status)]
+);
+
 export const subscriptionPlansTable = mysqlTable('subscription_plans', {
   id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
   slug: varchar('slug', { length: 80 }).notNull().unique(),

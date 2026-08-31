@@ -161,6 +161,49 @@ Table event_modes {
   created_at datetime [not null]
 }
 
+Table event_mode_configs {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, unique, ref: > event_modes.id]
+  schema_version int [not null, default: 1]
+  revision int [not null, default: 1]
+  config json [not null]
+  published_version_id bigint [ref: > event_mode_config_versions.id]
+  updated_by bigint [not null, ref: > users.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  Note: 'Borrador mutable con concurrencia optimista. Solo guarda IDs de event_resources.'
+}
+
+Table event_mode_config_versions {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, ref: > event_modes.id]
+  version int [not null]
+  schema_version int [not null, default: 1]
+  config json [not null]
+  published_by bigint [not null, ref: > users.id]
+  published_at datetime [not null]
+  indexes { (event_mode_id, version) [unique] }
+  Note: 'Publicaciones inmutables usadas por sesiones de lanzamiento.'
+}
+
+Table event_mode_sessions {
+  id bigint [pk, increment]
+  event_mode_id bigint [not null, ref: > event_modes.id]
+  config_version_id bigint [not null, ref: > event_mode_config_versions.id]
+  client_session_id varchar(80) [not null, unique]
+  device_installation_id varchar(120) [not null]
+  started_by bigint [not null, ref: > users.id]
+  status varchar(32) [not null, note: 'preparing | running | ended | failed']
+  started_at datetime [not null]
+  ended_at datetime
+  last_heartbeat_at datetime
+  failure_code varchar(80)
+  metadata json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { (event_mode_id, status) }
+}
+
 Table mode_settings {
   id bigint [pk, increment]
   event_mode_id bigint [not null, ref: > event_modes.id]
