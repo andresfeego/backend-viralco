@@ -8,6 +8,7 @@ const DEMO_USERS = [
 
 /** @param {import('knex').Knex} knex */
 exports.seed = async function seed(knex) {
+  if (process.env.NODE_ENV === 'production' || process.env.SEED_DEMO_USERS !== 'true') return;
   const statuses = Object.fromEntries((await knex('user_statuses').select('id', 'slug')).map((row) => [row.slug, row.id]));
   const roles = Object.fromEntries((await knex('roles').select('id', 'slug')).map((row) => [row.slug, row.id]));
 

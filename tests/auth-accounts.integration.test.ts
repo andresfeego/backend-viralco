@@ -84,6 +84,13 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(created.status).toBe(201);
     expect(created.body.account.subscription.status).toBe('active');
     expect(created.body.account.subscription.metadata.createdByAdmin).toBe(true);
+
+    await db.update(accountsTable).set({ isSystem: true }).where(eq(accountsTable.id, BigInt(created.body.account.id)));
+    const protectedStatus = await request(app).patch(`/api/admin/accounts/${created.body.account.id}/status`)
+      .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
+      .send({ status: 'suspended' });
+    expect(protectedStatus.status).toBe(409);
+    await db.update(accountsTable).set({ isSystem: false }).where(eq(accountsTable.id, BigInt(created.body.account.id)));
   });
 
   it('rejects duplicate account slugs and protects the only active owner', async () => {

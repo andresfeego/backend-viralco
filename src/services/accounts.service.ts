@@ -24,6 +24,7 @@ function mapAccount(row: any, subscription?: any, logoAsset?: any) {
     id: serializeId(row.id), slug: row.slug, name: row.name, logoAssetId: serializeId(row.logoAssetId),
     logoAsset: logoAsset === undefined ? undefined : logoAsset,
     phone: row.phone, email: row.email, ownerUserId: serializeId(row.ownerUserId), status: row.status,
+    isSystem: Boolean(row.isSystem),
     subscription: subscription === undefined ? undefined : subscription,
     createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
@@ -102,6 +103,7 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
     const result = await tx.insert(accountsTable).values({
       slug, name, logoAssetId,
       phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
+      isSystem: false,
     });
     const accountId = BigInt(result[0]?.insertId || 0);
     await tx.insert(accountUsersTable).values({
@@ -112,6 +114,7 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
     return mapAccount({
       id: accountId, slug, name, logoAssetId,
       phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
+      isSystem: false,
     }, subscription, null);
   });
 }
@@ -148,7 +151,9 @@ export async function updateAccountStatus(accountIdValue: unknown, statusValue: 
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
   const status = String(statusValue || '').trim();
   if (!ACCOUNT_STATUSES.has(status)) throw new ServiceError(400, 'Estado de cuenta invalido');
-  if (!(await findAccountById(accountId))) throw new ServiceError(404, 'Cuenta no encontrada');
+  const current = await findAccountById(accountId);
+  if (!current) throw new ServiceError(404, 'Cuenta no encontrada');
+  if (current.isSystem && status !== 'active') throw new ServiceError(409, 'La cuenta de plataforma debe permanecer activa');
   await db.update(accountsTable).set({ status, updatedAt: new Date() }).where(eq(accountsTable.id, accountId));
   return mapAccountWithSubscription(await findAccountById(accountId));
 }
@@ -190,6 +195,10 @@ export async function addMember(accountIdValue: unknown, input: any, requester: 
 }
 
 async function assertCanChangeOwnerMembership(accountId: EntityId, membership: any, patch: any, deleting = false) {
+  const account = await findAccountById(accountId);
+  if (account?.isSystem && membership.userId === account.ownerUserId && (deleting || patch.status === 'suspended' || patch.roleId)) {
+    throw new ServiceError(409, 'No se puede modificar el propietario canonico de la cuenta de plataforma');
+  }
   const ownerRole = await findRoleBySlug('owner');
   if (!ownerRole || membership.roleId !== ownerRole.id) return;
   const willStopBeingActiveOwner = deleting || patch.status === 'suspended' || (patch.roleId && patch.roleId !== ownerRole.id);

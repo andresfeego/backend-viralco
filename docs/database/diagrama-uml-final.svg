@@ -247,65 +247,71 @@
 <!-- accounts -->
 <g id="accounts" class="node">
 <title>accounts</title>
-<g id="a_accounts"><a xlink:title="accounts&#10;Cuenta cliente/empresa. Es duenio de suscripcion, eventos y biblioteca privada.">
-<ellipse fill="none" stroke="black" stroke-width="0" cx="3582.66" cy="-4282.09" rx="272.89" ry="469.54"/>
-<polygon fill="#1d71b8" stroke="transparent" points="3391.66,-4552.09 3391.66,-4612.09 3773.66,-4612.09 3773.66,-4552.09 3391.66,-4552.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4552.09 3391.66,-4612.09 3773.66,-4612.09 3773.66,-4552.09 3391.66,-4552.09"/>
-<text text-anchor="start" x="3456.39" y="-4573.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#ffffff"> &#160;&#160;&#160;&#160;&#160;&#160;accounts &#160;&#160;&#160;&#160;&#160;&#160;</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4492.09 3391.66,-4552.09 3773.66,-4552.09 3773.66,-4492.09 3391.66,-4492.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4492.09 3391.66,-4552.09 3773.66,-4552.09 3773.66,-4492.09 3391.66,-4492.09"/>
-<text text-anchor="start" x="3402.66" y="-4513.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">id</text>
-<text text-anchor="start" x="3427.55" y="-4513.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3686.2" y="-4513.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">bigint</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4432.09 3391.66,-4492.09 3773.66,-4492.09 3773.66,-4432.09 3391.66,-4432.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4432.09 3391.66,-4492.09 3773.66,-4492.09 3773.66,-4432.09 3391.66,-4432.09"/>
-<text text-anchor="start" x="3402.66" y="-4452.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">slug &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3542.23" y="-4453.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(120)</text>
-<text text-anchor="start" x="3723.57" y="-4453.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
-<text text-anchor="start" x="3732.46" y="-4453.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4372.09 3391.66,-4432.09 3773.66,-4432.09 3773.66,-4372.09 3391.66,-4372.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4372.09 3391.66,-4432.09 3773.66,-4432.09 3773.66,-4372.09 3391.66,-4372.09"/>
-<text text-anchor="start" x="3402.66" y="-4392.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">name &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3542.23" y="-4393.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(180)</text>
-<text text-anchor="start" x="3723.57" y="-4393.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
-<text text-anchor="start" x="3732.46" y="-4393.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4312.09 3391.66,-4372.09 3773.66,-4372.09 3773.66,-4312.09 3391.66,-4312.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4312.09 3391.66,-4372.09 3773.66,-4372.09 3773.66,-4312.09 3391.66,-4312.09"/>
-<text text-anchor="start" x="3402.66" y="-4332.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">logo_asset_id &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3686.2" y="-4333.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">bigint</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4252.09 3391.66,-4312.09 3773.66,-4312.09 3773.66,-4252.09 3391.66,-4252.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4252.09 3391.66,-4312.09 3773.66,-4312.09 3773.66,-4252.09 3391.66,-4252.09"/>
-<text text-anchor="start" x="3402.66" y="-4272.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">phone &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3599.11" y="-4273.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(64)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4192.09 3391.66,-4252.09 3773.66,-4252.09 3773.66,-4192.09 3391.66,-4192.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4192.09 3391.66,-4252.09 3773.66,-4252.09 3773.66,-4192.09 3391.66,-4192.09"/>
-<text text-anchor="start" x="3402.66" y="-4212.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">email &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3581.32" y="-4213.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(255)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4132.09 3391.66,-4192.09 3773.66,-4192.09 3773.66,-4132.09 3391.66,-4132.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4132.09 3391.66,-4192.09 3773.66,-4192.09 3773.66,-4132.09 3391.66,-4132.09"/>
-<text text-anchor="start" x="3402.47" y="-4152.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">owner_user_id &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3647.38" y="-4153.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">bigint</text>
-<text text-anchor="start" x="3723.85" y="-4153.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
-<text text-anchor="start" x="3732.74" y="-4153.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4072.09 3391.66,-4132.09 3773.66,-4132.09 3773.66,-4072.09 3391.66,-4072.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4072.09 3391.66,-4132.09 3773.66,-4132.09 3773.66,-4072.09 3391.66,-4072.09"/>
-<text text-anchor="start" x="3402.66" y="-4092.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">status &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3560.01" y="-4093.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(32)</text>
-<text text-anchor="start" x="3723.57" y="-4093.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
-<text text-anchor="start" x="3732.46" y="-4093.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4012.09 3391.66,-4072.09 3773.66,-4072.09 3773.66,-4012.09 3391.66,-4012.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-4012.09 3391.66,-4072.09 3773.66,-4072.09 3773.66,-4012.09 3391.66,-4012.09"/>
-<text text-anchor="start" x="3402.66" y="-4032.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">created_at &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3600.87" y="-4033.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">datetime</text>
-<text text-anchor="start" x="3723.57" y="-4033.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
-<text text-anchor="start" x="3732.46" y="-4033.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
-<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-3952.09 3391.66,-4012.09 3773.66,-4012.09 3773.66,-3952.09 3391.66,-3952.09"/>
-<polygon fill="none" stroke="#29235c" points="3391.66,-3952.09 3391.66,-4012.09 3773.66,-4012.09 3773.66,-3952.09 3391.66,-3952.09"/>
-<text text-anchor="start" x="3402.66" y="-3972.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">updated_at &#160;&#160;&#160;</text>
-<text text-anchor="start" x="3600.87" y="-3973.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">datetime</text>
-<text text-anchor="start" x="3723.57" y="-3973.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
-<text text-anchor="start" x="3732.46" y="-3973.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
-<polygon fill="none" stroke="#29235c" stroke-width="2" points="3390.66,-3951.09 3390.66,-4613.09 3774.66,-4613.09 3774.66,-3951.09 3390.66,-3951.09"/>
+<g id="a_accounts"><a xlink:title="accounts&#10;Cuenta cliente/empresa o cuenta protegida de plataforma.">
+<ellipse fill="none" stroke="black" stroke-width="0" cx="3582.66" cy="-4324.09" rx="272.89" ry="511.89"/>
+<polygon fill="#1d71b8" stroke="transparent" points="3391.66,-4624.09 3391.66,-4684.09 3773.66,-4684.09 3773.66,-4624.09 3391.66,-4624.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4624.09 3391.66,-4684.09 3773.66,-4684.09 3773.66,-4624.09 3391.66,-4624.09"/>
+<text text-anchor="start" x="3456.39" y="-4645.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#ffffff"> &#160;&#160;&#160;&#160;&#160;&#160;accounts &#160;&#160;&#160;&#160;&#160;&#160;</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4564.09 3391.66,-4624.09 3773.66,-4624.09 3773.66,-4564.09 3391.66,-4564.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4564.09 3391.66,-4624.09 3773.66,-4624.09 3773.66,-4564.09 3391.66,-4564.09"/>
+<text text-anchor="start" x="3402.66" y="-4585.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">id</text>
+<text text-anchor="start" x="3427.55" y="-4585.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3686.2" y="-4585.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">bigint</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4504.09 3391.66,-4564.09 3773.66,-4564.09 3773.66,-4504.09 3391.66,-4504.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4504.09 3391.66,-4564.09 3773.66,-4564.09 3773.66,-4504.09 3391.66,-4504.09"/>
+<text text-anchor="start" x="3402.66" y="-4524.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">slug &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3542.23" y="-4525.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(120)</text>
+<text text-anchor="start" x="3723.57" y="-4525.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.46" y="-4525.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4444.09 3391.66,-4504.09 3773.66,-4504.09 3773.66,-4444.09 3391.66,-4444.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4444.09 3391.66,-4504.09 3773.66,-4504.09 3773.66,-4444.09 3391.66,-4444.09"/>
+<text text-anchor="start" x="3402.66" y="-4464.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">name &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3542.23" y="-4465.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(180)</text>
+<text text-anchor="start" x="3723.57" y="-4465.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.46" y="-4465.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4384.09 3391.66,-4444.09 3773.66,-4444.09 3773.66,-4384.09 3391.66,-4384.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4384.09 3391.66,-4444.09 3773.66,-4444.09 3773.66,-4384.09 3391.66,-4384.09"/>
+<text text-anchor="start" x="3402.66" y="-4404.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">logo_asset_id &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3686.2" y="-4405.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">bigint</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4324.09 3391.66,-4384.09 3773.66,-4384.09 3773.66,-4324.09 3391.66,-4324.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4324.09 3391.66,-4384.09 3773.66,-4384.09 3773.66,-4324.09 3391.66,-4324.09"/>
+<text text-anchor="start" x="3402.66" y="-4344.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">phone &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3599.11" y="-4345.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(64)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4264.09 3391.66,-4324.09 3773.66,-4324.09 3773.66,-4264.09 3391.66,-4264.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4264.09 3391.66,-4324.09 3773.66,-4324.09 3773.66,-4264.09 3391.66,-4264.09"/>
+<text text-anchor="start" x="3402.66" y="-4284.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">email &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3581.32" y="-4285.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(255)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4204.09 3391.66,-4264.09 3773.66,-4264.09 3773.66,-4204.09 3391.66,-4204.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4204.09 3391.66,-4264.09 3773.66,-4264.09 3773.66,-4204.09 3391.66,-4204.09"/>
+<text text-anchor="start" x="3402.47" y="-4224.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">owner_user_id &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3647.38" y="-4225.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">bigint</text>
+<text text-anchor="start" x="3723.85" y="-4225.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.74" y="-4225.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4144.09 3391.66,-4204.09 3773.66,-4204.09 3773.66,-4144.09 3391.66,-4144.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4144.09 3391.66,-4204.09 3773.66,-4204.09 3773.66,-4144.09 3391.66,-4144.09"/>
+<text text-anchor="start" x="3402.66" y="-4164.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">status &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3560.01" y="-4165.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">varchar(32)</text>
+<text text-anchor="start" x="3723.57" y="-4165.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.46" y="-4165.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4084.09 3391.66,-4144.09 3773.66,-4144.09 3773.66,-4084.09 3391.66,-4084.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4084.09 3391.66,-4144.09 3773.66,-4144.09 3773.66,-4084.09 3391.66,-4084.09"/>
+<text text-anchor="start" x="3402.66" y="-4104.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">is_system &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3609.74" y="-4105.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">boolean</text>
+<text text-anchor="start" x="3723.57" y="-4105.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.46" y="-4105.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-4024.09 3391.66,-4084.09 3773.66,-4084.09 3773.66,-4024.09 3391.66,-4024.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-4024.09 3391.66,-4084.09 3773.66,-4084.09 3773.66,-4024.09 3391.66,-4024.09"/>
+<text text-anchor="start" x="3402.66" y="-4044.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">created_at &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3600.87" y="-4045.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">datetime</text>
+<text text-anchor="start" x="3723.57" y="-4045.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.46" y="-4045.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="#e7e2dd" stroke="transparent" points="3391.66,-3964.09 3391.66,-4024.09 3773.66,-4024.09 3773.66,-3964.09 3391.66,-3964.09"/>
+<polygon fill="none" stroke="#29235c" points="3391.66,-3964.09 3391.66,-4024.09 3773.66,-4024.09 3773.66,-3964.09 3391.66,-3964.09"/>
+<text text-anchor="start" x="3402.66" y="-3984.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">updated_at &#160;&#160;&#160;</text>
+<text text-anchor="start" x="3600.87" y="-3985.29" font-family="Helvetica,sans-Serif" font-style="italic" font-size="32.00" fill="#29235c">datetime</text>
+<text text-anchor="start" x="3723.57" y="-3985.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c"> </text>
+<text text-anchor="start" x="3732.46" y="-3985.29" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="32.00" fill="#29235c">(!)</text>
+<polygon fill="none" stroke="#29235c" stroke-width="2" points="3390.66,-3963.09 3390.66,-4685.09 3774.66,-4685.09 3774.66,-3963.09 3390.66,-3963.09"/>
 </a>
 </g>
 </g>
@@ -313,10 +319,10 @@
 <!-- accounts&#45;&gt;users -->
 <g id="edge14" class="edge">
 <title>accounts:e&#45;&gt;users:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M3774.66,-4162.09C4160.9,-4162.09 4367.41,-3919.74 4643.26,-4190.09 4888.49,-4430.43 4468.54,-7249.41 4796.26,-7307.19"/>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M3774.66,-4234.09C3856.35,-4234.09 3872.03,-4199.94 3953.12,-4190.09 4257.61,-4153.11 4420.77,-3978.96 4643.26,-4190.09 4892.33,-4426.45 4468.62,-7249.32 4796.26,-7307.19"/>
 <polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4796.43,-7310.72 4806.69,-7308.09 4797.03,-7303.74 4796.43,-7310.72"/>
 <text text-anchor="middle" x="4815.58" y="-7279.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
-<text text-anchor="middle" x="3768.44" y="-4133.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
+<text text-anchor="middle" x="3768.44" y="-4205.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- library_assets -->
 <g id="library_assets" class="node">
@@ -425,10 +431,10 @@
 <!-- accounts&#45;&gt;library_assets -->
 <g id="edge12" class="edge">
 <title>accounts:e&#45;&gt;library_assets:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M3774.66,-4342.09C4024.59,-4342.09 3871.62,-4043.85 3917.12,-3798.09 3943.4,-3656.19 3916.72,-2530.68 4053.09,-2478"/>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M3774.66,-4414.09C4055.66,-4414.09 3869.95,-4075.11 3917.12,-3798.09 3941.35,-3655.82 3916.62,-2530.67 4053.08,-2478"/>
 <polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4054.01,-2481.39 4063.19,-2476.09 4052.71,-2474.51 4054.01,-2481.39"/>
 <text text-anchor="middle" x="4054.3" y="-2447.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
-<text text-anchor="middle" x="3768.44" y="-4313.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
+<text text-anchor="middle" x="3768.44" y="-4385.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- account_users -->
 <g id="account_users" class="node">
@@ -523,9 +529,9 @@
 <!-- account_users&#45;&gt;accounts -->
 <g id="edge16" class="edge">
 <title>account_users:e&#45;&gt;accounts:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M2985.71,-7504.09C3311.43,-7504.09 3148.75,-7126.57 3212.2,-6807.09 3261.13,-6560.72 3139.41,-4577.41 3380.43,-4523.22"/>
-<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3381.11,-4526.67 3390.66,-4522.09 3380.34,-4519.71 3381.11,-4526.67"/>
-<text text-anchor="middle" x="3381.77" y="-4493.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M2985.71,-7504.09C3311.43,-7504.09 3148.34,-7126.49 3212.2,-6807.09 3259.88,-6568.62 3147.24,-4649.57 3380.4,-4595.27"/>
+<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3381.12,-4598.71 3390.66,-4594.09 3380.33,-4591.75 3381.12,-4598.71"/>
+<text text-anchor="middle" x="3381.77" y="-4565.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="2991.94" y="-7513.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- refresh_tokens -->
@@ -760,7 +766,7 @@
 <!-- events&#45;&gt;users -->
 <g id="edge32" class="edge">
 <title>events:e&#45;&gt;users:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M2991.71,-5105.09C3425.61,-5105.09 3652.01,-5137.58 3917.12,-4794.09 3988.98,-4700.99 3867.18,-4346.37 3953.12,-4266.09 4009.16,-4213.75 4587.6,-4213.34 4643.26,-4266.09 4886.42,-4496.54 4476.76,-7250.75 4796.52,-7307.21"/>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M2991.71,-5105.09C3415.2,-5105.09 3646.09,-5203.49 3917.12,-4878.09 4004.31,-4773.41 3854,-4359.55 3953.12,-4266.09 4008.91,-4213.49 4587.6,-4213.34 4643.26,-4266.09 4886.42,-4496.54 4476.76,-7250.75 4796.52,-7307.21"/>
 <polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4796.43,-7310.72 4806.69,-7308.09 4797.03,-7303.74 4796.43,-7310.72"/>
 <text text-anchor="middle" x="4797.8" y="-7317.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="2997.94" y="-5076.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
@@ -769,9 +775,9 @@
 <!-- events&#45;&gt;accounts -->
 <g id="edge28" class="edge">
 <title>events:e&#45;&gt;accounts:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M2991.71,-5585.09C3240.57,-5585.09 3141.17,-4550.96 3380.51,-4522.68"/>
-<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.88,-4526.17 3390.66,-4522.09 3380.47,-4519.18 3380.88,-4526.17"/>
-<text text-anchor="middle" x="3381.77" y="-4531.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M2991.71,-5585.09C3225.63,-5585.09 3155.42,-4622.91 3380.43,-4594.72"/>
+<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.89,-4598.2 3390.66,-4594.09 3380.46,-4591.22 3380.89,-4598.2"/>
+<text text-anchor="middle" x="3381.77" y="-4603.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="2997.94" y="-5594.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- events&#45;&gt;event_types -->
@@ -1357,7 +1363,7 @@
 <!-- event_mode_sessions&#45;&gt;users -->
 <g id="edge64" class="edge">
 <title>event_mode_sessions:e&#45;&gt;users:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M705.66,-6936.09C800.51,-6936.09 803.51,-5309.71 863.31,-5236.09 891.1,-5201.89 2335.67,-4775.76 2379.23,-4769.09 2389.78,-4767.48 3909.34,-4768.41 3917.12,-4761.09 4004.42,-4679.01 3865.61,-4304.94 3953.12,-4223.09 4065.13,-4118.33 4531.98,-4117.56 4643.26,-4223.09 4889.76,-4456.88 4472.16,-7249.94 4796.37,-7307.2"/>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M705.66,-6936.09C800.51,-6936.09 803.51,-5309.71 863.31,-5236.09 891.1,-5201.89 2335.66,-4775.65 2379.23,-4769.09 2470.75,-4755.31 3133.99,-4719.6 3212.2,-4769.09 3243.78,-4789.08 3216.62,-4825.11 3248.2,-4845.09 3279.6,-4864.97 3890.1,-4870.6 3917.12,-4845.09 4017.81,-4750.06 3852.43,-4318.12 3953.12,-4223.09 4008.89,-4170.46 4587.62,-4170.32 4643.26,-4223.09 4889.76,-4456.88 4472.16,-7249.94 4796.37,-7307.2"/>
 <polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4796.43,-7310.72 4806.69,-7308.09 4797.03,-7303.74 4796.43,-7310.72"/>
 <text text-anchor="middle" x="4797.8" y="-7317.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="699.44" y="-6945.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
@@ -2291,9 +2297,9 @@
 <!-- subscriptions&#45;&gt;accounts -->
 <g id="edge106" class="edge">
 <title>subscriptions:e&#45;&gt;accounts:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M3089.71,-2575.09C3248.66,-2575.09 3175.97,-2756.33 3212.2,-2911.09 3252.47,-3083.11 3212.16,-4467.87 3380.61,-4520.55"/>
-<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.24,-4524.03 3390.66,-4522.09 3381.31,-4517.11 3380.24,-4524.03"/>
-<text text-anchor="middle" x="3399.55" y="-4493.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M3089.71,-2575.09C3248.66,-2575.09 3176.33,-2756.25 3212.2,-2911.09 3253.86,-3090.98 3204.46,-4540.33 3380.7,-4592.64"/>
+<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.26,-4596.11 3390.66,-4594.09 3381.27,-4589.19 3380.26,-4596.11"/>
+<text text-anchor="middle" x="3399.55" y="-4565.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="3095.94" y="-2546.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- subscriptions&#45;&gt;subscription_plans -->
@@ -2443,9 +2449,9 @@
 <!-- library_assets&#45;&gt;accounts -->
 <g id="edge116" class="edge">
 <title>library_assets:e&#45;&gt;accounts:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M4534.19,-2296.09C4760.38,-2296.09 4579.14,-2583.55 4533.19,-2805.02 4400.94,-3442.48 4135.5,-3525.13 3953.12,-4150.09 3915.19,-4280.09 3958.73,-4663.85 3855.6,-4751.61 3835.97,-4768.31 3409.93,-4769.8 3391.66,-4751.61 3321.84,-4682.1 3290.8,-4532.76 3380.66,-4522.63"/>
-<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.86,-4526.13 3390.66,-4522.09 3380.49,-4519.14 3380.86,-4526.13"/>
-<text text-anchor="middle" x="3399.55" y="-4531.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M4534.19,-2296.09C4760.38,-2296.09 4579.08,-2583.53 4533.19,-2805.02 4400.95,-3443.31 4129.58,-3524.58 3953.12,-4152.09 3911.56,-4299.89 3971.57,-4735.43 3855.6,-4836.04 3836.13,-4852.93 3409.92,-4854.23 3391.66,-4836.04 3318,-4762.68 3285.32,-4605.02 3380.41,-4594.63"/>
+<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.86,-4598.11 3390.66,-4594.09 3380.49,-4591.12 3380.86,-4598.11"/>
+<text text-anchor="middle" x="3399.55" y="-4603.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="4527.97" y="-2267.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- library_assets&#45;&gt;library_asset_categories -->
@@ -2613,8 +2619,8 @@
 <!-- account_library&#45;&gt;users -->
 <g id="edge128" class="edge">
 <title>account_library:e&#45;&gt;users:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M3014.71,-4060.09C3169.03,-4060.09 3107.08,-3865.55 3248.2,-3803.09 3536.42,-3675.54 4454.76,-3806.48 4643.26,-4059.09 4857.37,-4346.03 4453.06,-7251.98 4796.58,-7307.29"/>
-<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4796.45,-7310.79 4806.69,-7308.09 4797,-7303.81 4796.45,-7310.79"/>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M3014.71,-4060.09C3169.03,-4060.09 3107.08,-3865.55 3248.2,-3803.09 3537.38,-3675.11 4457.94,-3827.84 4643.26,-4084.09 4851.44,-4371.97 4455.67,-7252.47 4796.65,-7307.3"/>
+<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4796.45,-7310.79 4806.69,-7308.09 4797,-7303.82 4796.45,-7310.79"/>
 <text text-anchor="middle" x="4815.58" y="-7279.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="3020.94" y="-4031.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
@@ -2622,7 +2628,7 @@
 <!-- account_library&#45;&gt;users -->
 <g id="edge130" class="edge">
 <title>account_library:e&#45;&gt;users:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M3014.71,-4000.09C3166.75,-4000.09 3108.75,-3810.66 3248.2,-3750.09 3390.41,-3688.32 4533.43,-3671.66 4643.26,-3781.09 4918.72,-4055.56 4423.23,-7251.19 4796.55,-7307.34"/>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M3014.71,-4000.09C3165.77,-4000.09 3109.46,-3812.86 3248.2,-3753.09 3390.61,-3691.74 4533.93,-3681.13 4643.26,-3791.09 4916.64,-4066.08 4424.28,-7251.38 4796.58,-7307.35"/>
 <polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="4796.46,-7310.85 4806.69,-7308.09 4796.98,-7303.87 4796.46,-7310.85"/>
 <text text-anchor="middle" x="4797.8" y="-7317.69" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="3020.94" y="-3971.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
@@ -2631,9 +2637,9 @@
 <!-- account_library&#45;&gt;accounts -->
 <g id="edge124" class="edge">
 <title>account_library:e&#45;&gt;accounts:w</title>
-<path fill="none" stroke="#29235c" stroke-width="3" d="M3014.71,-4420.09C3184.29,-4420.09 3216.25,-4517.95 3380.19,-4521.97"/>
-<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.62,-4525.47 3390.66,-4522.09 3380.7,-4518.47 3380.62,-4525.47"/>
-<text text-anchor="middle" x="3381.77" y="-4493.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
+<path fill="none" stroke="#29235c" stroke-width="3" d="M3014.71,-4420.09C3195.41,-4420.09 3206.2,-4587.7 3380.59,-4593.92"/>
+<polygon fill="#29235c" stroke="#29235c" stroke-width="3" points="3380.6,-4597.42 3390.66,-4594.09 3380.72,-4590.42 3380.6,-4597.42"/>
+<text text-anchor="middle" x="3381.77" y="-4565.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">1</text>
 <text text-anchor="middle" x="3020.94" y="-4391.29" font-family="Helvetica,sans-Serif" font-size="32.00" fill="#29235c">*</text>
 </g>
 <!-- account_library&#45;&gt;library_assets -->

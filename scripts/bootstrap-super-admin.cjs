@@ -2,6 +2,7 @@ require('dotenv/config');
 const bcrypt = require('bcryptjs');
 const knexFactory = require('knex');
 const config = require('../knexfile.cjs');
+const { ensurePlatformAccount, PLATFORM_ACCOUNT_SLUG } = require('./platform-account.cjs');
 
 const email = String(process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL || '').trim().toLowerCase();
 const password = String(process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD || '');
@@ -27,8 +28,9 @@ async function main() {
 
     const user = await trx('users').where({ email }).first();
     await trx('user_roles').insert({ user_id: user.id, role_id: role.id }).onConflict(['user_id', 'role_id']).ignore();
+    await ensurePlatformAccount(trx, user.id);
   });
-  console.log(`Super admin listo: ${email}`);
+  console.log(`Super admin listo: ${email}; cuenta de plataforma: ${PLATFORM_ACCOUNT_SLUG}`);
 }
 
 main().finally(() => knex.destroy());

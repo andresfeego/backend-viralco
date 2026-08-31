@@ -8,6 +8,7 @@ const knexFactory = require('knex');
 const sharp = require('sharp');
 const knexConfig = require('../knexfile.cjs');
 const manifest = require('../resources/magic-mirror-assets.json');
+const dryRun = process.argv.includes('--dry-run');
 
 const required = (name) => {
   const value = String(process.env[name] || '').trim();
@@ -28,9 +29,9 @@ const mimeFor = (file) => {
 const root = required('MAGIC_MIRROR_ASSET_ROOT');
 const createdBy = required('MAGIC_MIRROR_CREATED_BY');
 const targetAccountId = String(process.env.MAGIC_MIRROR_ACCOUNT_ID || '').trim();
-const bucket = required('R2_BUCKET_NAME');
-const publicBase = required('R2_BUCKET_PATH').replace(/\/+$/, '');
-const r2 = new S3Client({
+const bucket = dryRun ? String(process.env.R2_BUCKET_NAME || '') : required('R2_BUCKET_NAME');
+const publicBase = dryRun ? String(process.env.R2_BUCKET_PATH || '').replace(/\/+$/, '') : required('R2_BUCKET_PATH').replace(/\/+$/, '');
+const r2 = dryRun ? null : new S3Client({
   region: process.env.R2_BUCKET_REGION || 'auto',
   endpoint: `https://${required('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
   credentials: { accessKeyId: required('R2_ACCESS_KEY_ID'), secretAccessKey: required('R2_SECRET_ACCESS_KEY') },
@@ -38,6 +39,7 @@ const r2 = new S3Client({
 const db = knexFactory(knexConfig[process.env.NODE_ENV === 'production' ? 'production' : 'development']);
 
 async function put(key, body, contentType) {
+  if (!r2) throw new Error('R2 no disponible en dry-run');
   await r2.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
   return `${publicBase}/${key}`;
 }
@@ -50,8 +52,16 @@ async function importItem(item) {
   const digest = crypto.createHash('sha256').update(body).digest('hex');
   const originalKey = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${path.basename(sourcePath)}`;
   const [existing] = await db('library_assets').where({ storage_key: originalKey }).select('id').limit(1);
-  if (existing) return { id: existing.id, skipped: true };
+  if (existing) {
+    if (targetAccountId && !dryRun) {
+      const now = new Date();
+      await db('account_library').insert({ account_id: targetAccountId, library_asset_id: existing.id, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();
+    }
+    return { id: existing.id, status: 'skipped', bytes: body.length };
+  }
   const [category] = await db('library_asset_categories').where({ slug: item.category }).select('id').limit(1);
+  if (!category) throw new Error(`Categoria no inicializada: ${item.category}`);
+  if (dryRun) return { id: null, status: 'ready', bytes: body.length, sha256: digest };
   const now = new Date();
   const fileUrl = await put(originalKey, body, mimeType);
   const metadata = { manifestId: item.id, sha256: digest, mirrorCompatible: true, stage: item.stage || null };
@@ -88,15 +98,40 @@ async function importItem(item) {
   if (targetAccountId) {
     await db('account_library').insert({ account_id: targetAccountId, library_asset_id: assetId, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();
   }
-  return { id: assetId, skipped: false };
+  return { id: assetId, status: 'imported', bytes: body.length };
 }
 
 (async () => {
   try {
-    for (const item of manifest) {
-      const result = await importItem(item);
-      process.stdout.write(`${result.skipped ? 'skip' : 'import'} ${item.id}\n`);
+    if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) throw new Error(`Raiz de assets invalida: ${root}`);
+    const [creator] = await db('users').where({ id: createdBy }).select('id').limit(1);
+    if (!creator) throw new Error(`MAGIC_MIRROR_CREATED_BY no existe: ${createdBy}`);
+    if (targetAccountId) {
+      const [account] = await db('accounts').where({ id: targetAccountId }).select('id').limit(1);
+      if (!account) throw new Error(`MAGIC_MIRROR_ACCOUNT_ID no existe: ${targetAccountId}`);
     }
+    const ids = new Set();
+    const sources = new Set();
+    for (const item of manifest) {
+      if (ids.has(item.id)) throw new Error(`ID duplicado en manifiesto: ${item.id}`);
+      if (sources.has(item.source)) throw new Error(`Source duplicado en manifiesto: ${item.source}`);
+      ids.add(item.id);
+      sources.add(item.source);
+    }
+    const report = { mode: dryRun ? 'dry-run' : 'import', ready: 0, imported: 0, skipped: 0, failed: 0, bytes: 0 };
+    for (const item of manifest) {
+      try {
+        const result = await importItem(item);
+        report[result.status] += 1;
+        report.bytes += result.bytes || 0;
+        process.stdout.write(`${result.status} ${item.id}\n`);
+      } catch (error) {
+        report.failed += 1;
+        process.stderr.write(`failed ${item.id}: ${error.message}\n`);
+      }
+    }
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    if (report.failed) process.exitCode = 1;
   } finally {
     await db.destroy();
   }

@@ -69,10 +69,15 @@ export const accountsTable = mysqlTable(
     email: varchar('email', { length: 255 }),
     ownerUserId: bigint('owner_user_id', { mode: 'bigint', unsigned: true }).notNull(),
     status: varchar('status', { length: 32 }).notNull().default('active'),
+    isSystem: boolean('is_system').notNull().default(false),
     createdAt: datetime('created_at').notNull(),
     updatedAt: datetime('updated_at').notNull(),
   },
-  (table) => [uniqueIndex('accounts_slug_uq').on(table.slug), index('accounts_owner_idx').on(table.ownerUserId)]
+  (table) => [
+    uniqueIndex('accounts_slug_uq').on(table.slug),
+    index('accounts_owner_idx').on(table.ownerUserId),
+    index('accounts_system_status_idx').on(table.isSystem, table.status),
+  ]
 );
 
 export const accountUsersTable = mysqlTable(
