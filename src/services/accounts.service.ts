@@ -87,7 +87,7 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
   const ownerUserId = options.ownerUserId || parseEntityId(input?.ownerUserId, 'ID de propietario');
   const email = normalizeOptionalEmail(input?.email);
   const logoAssetId = input?.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null;
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new ServiceError(400, 'Slug invalido');
+  if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(slug)) throw new ServiceError(400, 'Slug invalido');
   if (!name) throw new ServiceError(400, 'Nombre de cuenta requerido');
   if (await findAccountBySlug(slug)) throw new ServiceError(409, 'El slug ya existe');
   await assertInitialLogoAsset(logoAssetId);
@@ -108,7 +108,7 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
       accountId, userId: ownerUserId, roleId: ownerRole.id, status: 'active',
       invitedBy: parseEntityId(requester.id), invitedAt: now, joinedAt: now, createdAt: now, updatedAt: now,
     });
-    const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'starter', status: options.subscriptionStatus, metadata: options.subscriptionMetadata }, tx);
+    const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'suscripcion', modeSlugs: input?.modeSlugs, status: options.subscriptionStatus, metadata: options.subscriptionMetadata }, tx);
     return mapAccount({
       id: accountId, slug, name, logoAssetId,
       phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,

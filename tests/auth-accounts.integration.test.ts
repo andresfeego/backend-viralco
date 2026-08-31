@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { app } from '../src/server.ts';
 import { db } from '../src/db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
 import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
 
@@ -23,6 +23,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     await db.delete(accountLibraryTable);
     await db.delete(libraryAssetVariantsTable);
     await db.delete(libraryAssetsTable);
+    await db.delete(subscriptionModesTable);
     await db.delete(subscriptionsTable);
     await db.delete(accountUsersTable);
     await db.delete(accountsTable);
@@ -54,7 +55,7 @@ run('auth, accounts, subscriptions and events integration', () => {
   it('creates a self-service account with owner membership and trialing subscription', async () => {
     const created = await request(app).post('/api/accounts')
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ slug: 'cuenta-test', name: 'Cuenta Test', phone: '123' });
+      .send({ slug: 'cuenta_test', name: 'Cuenta Test', phone: '123' });
     expect(created.status).toBe(201);
     expect(typeof created.body.account.id).toBe('string');
     expect(created.body.account.subscription.status).toBe('trialing');
@@ -76,7 +77,7 @@ run('auth, accounts, subscriptions and events integration', () => {
 
     const created = await request(app).post('/api/admin/accounts')
       .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
-      .send({ slug: 'cuenta-admin', name: 'Cuenta Admin', ownerUserId: ownerLogin.body.user.id });
+      .send({ slug: 'cuenta_admin', name: 'Cuenta Admin', ownerUserId: ownerLogin.body.user.id });
     expect(created.status).toBe(201);
     expect(created.body.account.subscription.status).toBe('active');
     expect(created.body.account.subscription.metadata.createdByAdmin).toBe(true);
@@ -85,7 +86,7 @@ run('auth, accounts, subscriptions and events integration', () => {
   it('rejects duplicate account slugs and protects the only active owner', async () => {
     const duplicate = await request(app).post('/api/accounts')
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ slug: 'cuenta-test', name: 'Duplicada' });
+      .send({ slug: 'cuenta_test', name: 'Duplicada' });
     expect(duplicate.status).toBe(409);
 
     const members = await request(app).get(`/api/accounts/${accountId}/members`)
@@ -132,19 +133,19 @@ run('auth, accounts, subscriptions and events integration', () => {
     ownerLogin = await request(app).post('/api/auth/login').send({ email: owner.email, password: 'Password_123!' });
   });
 
-  it('creates account-scoped events only with a valid subscription and enforces event limit', async () => {
-    for (const slug of ['evento-uno', 'evento-dos', 'evento-tres']) {
+  it('creates account-scoped events only with a valid subscription and contracted modes', async () => {
+    for (const slug of ['evento_uno', 'evento_dos', 'evento_tres']) {
       const created = await request(app).post(`/api/accounts/${accountId}/events`)
         .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-        .send({ name: slug, slug, startDate: '2026-09-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
+        .send({ name: slug, slug, eventTypeSlug: 'boda', startDate: '2026-09-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
       expect(created.status).toBe(201);
       expect(created.body.event.accountId).toBe(accountId);
     }
 
-    const overLimit = await request(app).post(`/api/accounts/${accountId}/events`)
+    const notContracted = await request(app).post(`/api/accounts/${accountId}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ name: 'Evento cuatro', slug: 'evento-cuatro', startDate: '2026-09-04', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
-    expect(overLimit.status).toBe(403);
+      .send({ name: 'Evento Cabina', slug: 'evento_cabina', eventTypeSlug: 'boda', startDate: '2026-09-04', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['cabina'] });
+    expect(notContracted.status).toBe(403);
 
     const listed = await request(app).get(`/api/accounts/${accountId}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
@@ -155,13 +156,13 @@ run('auth, accounts, subscriptions and events integration', () => {
   it('blocks event creation when account has no valid subscription', async () => {
     const createdAccount = await request(app).post('/api/accounts')
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ slug: 'cuenta-sin-suscripcion', name: 'Cuenta Sin Suscripcion' });
+      .send({ slug: 'cuenta_sin_suscripcion', name: 'Cuenta Sin Suscripcion' });
     expect(createdAccount.status).toBe(201);
     await db.delete(subscriptionsTable).where(eq(subscriptionsTable.accountId, BigInt(createdAccount.body.account.id)));
 
     const event = await request(app).post(`/api/accounts/${createdAccount.body.account.id}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ name: 'Sin Subs', slug: 'sin-subs', startDate: '2026-10-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
+      .send({ name: 'Sin Subs', slug: 'sin-subs', eventTypeSlug: 'boda', startDate: '2026-10-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
     expect(event.status).toBe(403);
   });
 
@@ -169,7 +170,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     await db.update(eventsTable).set({ status: 'archived' }).where(eq(eventsTable.accountId, BigInt(accountId)));
     const event = await request(app).post(`/api/accounts/${accountId}/events`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ name: 'Evento Recursos', slug: 'evento-recursos', startDate: '2026-09-10', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['foto'] });
+      .send({ name: 'Evento Recursos', slug: 'evento_recursos', eventTypeSlug: 'boda', startDate: '2026-09-10', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
     expect(event.status).toBe(201);
 
     const invalidMime = await request(app).post(`/api/accounts/${accountId}/library/uploads`)

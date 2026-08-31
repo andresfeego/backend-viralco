@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -22,6 +22,7 @@ const AUDIO_TYPES = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wa
 const VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const SIGNED_UPLOAD_EXPIRES_IN = 300;
+const SIGNED_READ_EXPIRES_IN = 900;
 
 function requiredEnv(name: string) {
   const value = String(process.env[name] || '').trim();
@@ -129,4 +130,14 @@ export async function putR2Object(input: { key: string; body: Buffer; contentTyp
     ContentType: input.contentType,
   }));
   return { key: input.key, fileUrl: r2PublicUrl(input.key) };
+}
+
+export async function createPresignedReadUrl(key: string) {
+  const normalizedKey = String(key || '').trim();
+  if (!normalizedKey) return '';
+  const command = new GetObjectCommand({
+    Bucket: requiredEnv('R2_BUCKET_NAME'),
+    Key: normalizedKey,
+  });
+  return getSignedUrl(r2, command, { expiresIn: SIGNED_READ_EXPIRES_IN });
 }

@@ -177,13 +177,6 @@ export const eventBrandingTable = mysqlTable(
     eventId: bigint('event_id', { mode: 'bigint', unsigned: true }).notNull(),
     logoResourceId: bigint('logo_resource_id', { mode: 'bigint', unsigned: true }),
     backgroundResourceId: bigint('background_resource_id', { mode: 'bigint', unsigned: true }),
-    phone: varchar('phone', { length: 64 }),
-    primaryColor: varchar('primary_color', { length: 32 }),
-    interval: varchar('interval', { length: 32 }),
-    maxEvents: int('max_events'),
-    maxStorageGb: int('max_storage_gb'),
-    maxDevices: int('max_devices'),
-    features: json('features'),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: datetime('created_at').notNull(),
     updatedAt: datetime('updated_at').notNull(),
@@ -208,6 +201,8 @@ export const modesTable = mysqlTable('modes', {
   slug: varchar('slug', { length: 80 }).notNull().unique(),
   name: varchar('name', { length: 120 }).notNull(),
   description: text('description'),
+  priceAmount: int('price_amount').notNull().default(0),
+  priceCurrency: varchar('price_currency', { length: 3 }).notNull().default('USD'),
   isDefault: boolean('is_default').notNull().default(false),
 });
 
@@ -256,6 +251,24 @@ export const subscriptionsTable = mysqlTable(
     updatedAt: datetime('updated_at').notNull(),
   },
   (table) => [index('subscriptions_account_idx').on(table.accountId)]
+);
+
+export const subscriptionModesTable = mysqlTable(
+  'subscription_modes',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    subscriptionId: bigint('subscription_id', { mode: 'bigint', unsigned: true }).notNull(),
+    modeId: bigint('mode_id', { mode: 'bigint', unsigned: true }).notNull(),
+    priceAmount: int('price_amount').notNull(),
+    priceCurrency: varchar('price_currency', { length: 3 }).notNull().default('USD'),
+    status: varchar('status', { length: 32 }).notNull().default('active'),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('subscription_modes_subscription_mode_uq').on(table.subscriptionId, table.modeId),
+    index('subscription_modes_subscription_idx').on(table.subscriptionId),
+  ]
 );
 
 export const libraryAssetCategoriesTable = mysqlTable('library_asset_categories', {

@@ -4,11 +4,13 @@ import { eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, 
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess } from './account-access.service.ts';
-import { assertAssetAvailableForEventAccount, mapLibraryAsset } from './library.service.ts';
-import { assertAccountCanCreateEvent } from './subscriptions.service.ts';
+import { assertAssetAvailableForEventAccount, getLibraryAssetWithVariants, mapLibraryAsset } from './library.service.ts';
+import { assertAccountCanCreateEvent, assertSubscriptionIncludesModes } from './subscriptions.service.ts';
 
 const EVENT_STATUS = new Set(['draft', 'active', 'archived']);
 const RESOURCE_PURPOSES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'other']);
+const CONTRACTABLE_MODE_SLUGS = new Set(['espejo', 'cabina', 'video-360']);
+const CONTRACTABLE_MODE_ORDER = ['espejo', 'cabina', 'video-360'];
 
 function normalizeSlug(nameOrSlug: string) {
   return String(nameOrSlug || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -67,18 +69,23 @@ async function getEventModes(eventId: EntityId) {
     .where(eq(eventModesTable.eventId, eventId))
     .orderBy(asc(eventModesTable.orderIndex), asc(modesTable.name));
   return rows.map(({ eventMode, mode }) => ({
-    id: serializeId(eventMode.id), mode: { id: serializeId(mode.id), slug: mode.slug, name: mode.name, description: mode.description },
+    id: serializeId(eventMode.id), mode: { id: serializeId(mode.id), slug: mode.slug, name: mode.name, description: mode.description, priceAmount: mode.priceAmount, priceCurrency: mode.priceCurrency },
     isActive: Boolean(eventMode.isActive), orderIndex: eventMode.orderIndex, createdAt: eventMode.createdAt,
   }));
 }
 
-export function mapEventResource(row: any, asset?: any) {
+export async function mapEventResource(row: any, asset?: any) {
   return {
     id: serializeId(row.id), eventId: serializeId(row.eventId), libraryAssetId: serializeId(row.libraryAssetId),
     eventModeId: serializeId(row.eventModeId), purpose: row.purpose, placement: row.placement, config: row.config || null,
-    orderIndex: row.orderIndex, isActive: Boolean(row.isActive), asset: asset ? mapLibraryAsset(asset) : undefined,
+    orderIndex: row.orderIndex, isActive: Boolean(row.isActive), asset: asset ? await mapLibraryAsset(asset) : undefined,
     createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
+}
+
+async function mapEventResourceWithVariants(row: any, asset?: any) {
+  const assetWithVariants = asset ? await getLibraryAssetWithVariants(asset.id) : null;
+  return { ...await mapEventResource(row, asset), asset: assetWithVariants || (asset ? await mapLibraryAsset(asset) : undefined) };
 }
 
 async function getResourceById(resourceId: EntityId) {
@@ -91,20 +98,16 @@ async function getResourceById(resourceId: EntityId) {
 }
 
 async function mapBranding(branding: any) {
-  if (!branding) {
-    return { id: null, logoResourceId: null, backgroundResourceId: null, logoResource: null, backgroundResource: null, phone: '', primaryColor: '', interval: '', maxEvents: null, maxStorageGb: null, maxDevices: null, features: null, isActive: true };
-  }
+  if (!branding) return { id: null, logoResourceId: null, backgroundResourceId: null, logoResource: null, backgroundResource: null, isActive: true };
   const [logo, background] = await Promise.all([
     branding.logoResourceId ? getResourceById(branding.logoResourceId) : null,
     branding.backgroundResourceId ? getResourceById(branding.backgroundResourceId) : null,
   ]);
   return {
     id: serializeId(branding.id), logoResourceId: serializeId(branding.logoResourceId), backgroundResourceId: serializeId(branding.backgroundResourceId),
-    logoResource: logo ? mapEventResource(logo.resource, logo.asset) : null,
-    backgroundResource: background ? mapEventResource(background.resource, background.asset) : null,
-    phone: branding.phone || '', primaryColor: branding.primaryColor || '', interval: branding.interval || '',
-    maxEvents: branding.maxEvents ?? null, maxStorageGb: branding.maxStorageGb ?? null, maxDevices: branding.maxDevices ?? null,
-    features: branding.features || null, isActive: branding.isActive === undefined ? true : Boolean(branding.isActive),
+    logoResource: logo ? await mapEventResourceWithVariants(logo.resource, logo.asset) : null,
+    backgroundResource: background ? await mapEventResourceWithVariants(background.resource, background.asset) : null,
+    isActive: branding.isActive === undefined ? true : Boolean(branding.isActive),
   };
 }
 
@@ -122,7 +125,10 @@ async function mapEventRow(row: any) {
 
 export async function listModes() {
   const rows = await db.select().from(modesTable).orderBy(asc(modesTable.name));
-  return rows.map((row) => ({ id: serializeId(row.id), slug: row.slug, name: row.name, description: row.description, isDefault: Boolean(row.isDefault) }));
+  return rows
+    .filter((row) => CONTRACTABLE_MODE_SLUGS.has(row.slug))
+    .sort((a, b) => CONTRACTABLE_MODE_ORDER.indexOf(a.slug) - CONTRACTABLE_MODE_ORDER.indexOf(b.slug))
+    .map((row) => ({ id: serializeId(row.id), slug: row.slug, name: row.name, description: row.description, priceAmount: row.priceAmount, priceCurrency: row.priceCurrency, isDefault: Boolean(row.isDefault) }));
 }
 
 export async function listEventTypes() {
@@ -185,12 +191,14 @@ async function eventTypeFromInput(input: any, currentEventTypeId?: EntityId) {
   return eventType;
 }
 
-async function modeIdsFromInput(modeSlugsValue: unknown) {
+async function modeIdsFromInput(modeSlugsValue: unknown, options: { requireExplicit?: boolean } = {}) {
   const requested = Array.isArray(modeSlugsValue) ? modeSlugsValue.map((value) => String(value).trim()).filter(Boolean) : [];
+  if (options.requireExplicit && requested.length === 0) throw new ServiceError(400, 'Selecciona al menos un modo de evento');
   const rows = await db.select().from(modesTable);
-  const defaults = rows.filter((mode) => mode.isDefault).map((mode) => mode.slug);
+  const contractableRows = rows.filter((mode) => CONTRACTABLE_MODE_SLUGS.has(mode.slug));
+  const defaults = contractableRows.filter((mode) => mode.isDefault).map((mode) => mode.slug);
   const slugs = requested.length ? requested : defaults;
-  const modeBySlug = new Map(rows.map((row) => [row.slug, row]));
+  const modeBySlug = new Map(contractableRows.map((row) => [row.slug, row]));
   const modes = slugs.map((slug) => modeBySlug.get(slug));
   if (modes.some((mode) => !mode)) throw new ServiceError(400, 'Modo de evento invalido');
   return modes as any[];
@@ -208,19 +216,20 @@ export async function createEvent(accountIdValue: unknown, input: any, requester
   const description = String(input?.description || '').trim();
   const timezone = assertTimezone(input?.timezone);
   if (!name) throw new ServiceError(400, 'Nombre de evento es requerido');
-  if (!startDate) throw new ServiceError(400, 'Fecha de evento es requerida');
-  const slugBase = normalizeSlug(`${eventType.slug}-${name}-${startDate}`);
+  const slugDate = startDate || new Date().toISOString().slice(0, 10);
+  const slugBase = normalizeSlug(`${eventType.slug}-${name}-${slugDate}`);
   const slug = await uniqueSlugForAccount(accountId, slugBase);
   if (!slug) throw new ServiceError(400, 'Slug invalido');
   if (!EVENT_STATUS.has(status)) throw new ServiceError(400, 'status invalido');
-  const modes = await modeIdsFromInput(input?.modeSlugs);
+  const modes = await modeIdsFromInput(input?.modeSlugs, { requireExplicit: true });
+  await assertSubscriptionIncludesModes(accountId, modes.map((mode) => mode.slug));
   const now = new Date();
 
   const eventId = await db.transaction(async (tx) => {
     const result = await tx.insert(eventsTable).values({ accountId, eventTypeId: eventType.id, slug, name, description: description || null, startDate, endDate, status, timezone, createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
     const insertedEventId = BigInt(result[0]?.insertId || 0);
     if (!insertedEventId) throw new ServiceError(500, 'No se pudo crear evento');
-    await tx.insert(eventBrandingTable).values({ eventId: insertedEventId, phone: String(input?.phone || '').trim() || null, createdAt: now, updatedAt: now });
+    await tx.insert(eventBrandingTable).values({ eventId: insertedEventId, createdAt: now, updatedAt: now });
     for (const [index, mode] of modes.entries()) await tx.insert(eventModesTable).values({ eventId: insertedEventId, modeId: mode.id, isActive: true, orderIndex: index, createdAt: now });
     return insertedEventId;
   });
@@ -238,13 +247,21 @@ export async function updateEvent(eventIdValue: unknown, input: any, requester: 
   const nextDescription = String(input?.description ?? current.description ?? '').trim();
   const nextTimezone = input?.timezone === undefined ? current.timezone : assertTimezone(input?.timezone);
   if (!nextName) throw new ServiceError(400, 'Nombre de evento es requerido');
-  if (!nextStartDate) throw new ServiceError(400, 'Fecha de evento es requerida');
   const regenerateSlug = nextName !== current.name || nextStartDate !== current.startDate || nextEventType.id !== current.eventTypeId;
-  const nextSlug = regenerateSlug ? await uniqueSlugForAccount(current.accountId, normalizeSlug(`${nextEventType.slug}-${nextName}-${nextStartDate}`), eventId) : current.slug;
+  const slugDate = nextStartDate || new Date().toISOString().slice(0, 10);
+  const nextSlug = regenerateSlug ? await uniqueSlugForAccount(current.accountId, normalizeSlug(`${nextEventType.slug}-${nextName}-${slugDate}`), eventId) : current.slug;
   if (!nextSlug) throw new ServiceError(400, 'Slug invalido');
   if (!EVENT_STATUS.has(nextStatus)) throw new ServiceError(400, 'status invalido');
   await assertUniqueSlug(current.accountId, nextSlug, eventId);
-  await db.update(eventsTable).set({ eventTypeId: nextEventType.id, name: nextName, slug: nextSlug, startDate: nextStartDate, endDate: nextEndDate, status: nextStatus, description: nextDescription || null, timezone: nextTimezone, updatedAt: new Date() }).where(eq(eventsTable.id, eventId));
+  const nextModes = input?.modeSlugs === undefined ? null : await modeIdsFromInput(input.modeSlugs, { requireExplicit: true });
+  if (nextModes) await assertSubscriptionIncludesModes(current.accountId, nextModes.map((mode) => mode.slug));
+  await db.transaction(async (tx) => {
+    await tx.update(eventsTable).set({ eventTypeId: nextEventType.id, name: nextName, slug: nextSlug, startDate: nextStartDate, endDate: nextEndDate, status: nextStatus, description: nextDescription || null, timezone: nextTimezone, updatedAt: new Date() }).where(eq(eventsTable.id, eventId));
+    if (nextModes) {
+      await tx.delete(eventModesTable).where(eq(eventModesTable.eventId, eventId));
+      for (const [index, mode] of nextModes.entries()) await tx.insert(eventModesTable).values({ eventId, modeId: mode.id, isActive: true, orderIndex: index, createdAt: new Date() });
+    }
+  });
   return getEventById(eventId, requester);
 }
 
@@ -267,13 +284,6 @@ export async function updateEventBranding(eventIdValue: unknown, input: any, req
     patch.backgroundResourceId = input.backgroundResourceId ? parseEntityId(input.backgroundResourceId, 'ID de fondo') : null;
     if (patch.backgroundResourceId) await assertResourceBelongsToEvent(patch.backgroundResourceId, eventId, 'background');
   }
-  if (input?.phone !== undefined) patch.phone = String(input.phone || '').trim() || null;
-  if (input?.primaryColor !== undefined) patch.primaryColor = String(input.primaryColor || '').trim() || null;
-  if (input?.interval !== undefined) patch.interval = String(input.interval || '').trim() || null;
-  if (input?.maxEvents !== undefined) patch.maxEvents = input.maxEvents === null || input.maxEvents === '' ? null : assertPositiveInt(input.maxEvents, 'maxEvents');
-  if (input?.maxStorageGb !== undefined) patch.maxStorageGb = input.maxStorageGb === null || input.maxStorageGb === '' ? null : assertPositiveInt(input.maxStorageGb, 'maxStorageGb');
-  if (input?.maxDevices !== undefined) patch.maxDevices = input.maxDevices === null || input.maxDevices === '' ? null : assertPositiveInt(input.maxDevices, 'maxDevices');
-  if (input?.features !== undefined) patch.features = input.features && typeof input.features === 'object' ? input.features : null;
   if (input?.isActive !== undefined) patch.isActive = Boolean(input.isActive);
   const existing = await getBranding(eventId);
   if (existing) await db.update(eventBrandingTable).set(patch).where(eq(eventBrandingTable.eventId, eventId));
@@ -289,7 +299,7 @@ export async function listEventResources(eventIdValue: unknown, requester: any) 
     .innerJoin(libraryAssetsTable, eq(eventResourcesTable.libraryAssetId, libraryAssetsTable.id))
     .where(eq(eventResourcesTable.eventId, eventId))
     .orderBy(asc(eventResourcesTable.purpose), asc(eventResourcesTable.orderIndex), asc(eventResourcesTable.id));
-  return rows.map((row) => mapEventResource(row.resource, row.asset));
+  return Promise.all(rows.map((row) => mapEventResource(row.resource, row.asset)));
 }
 
 export async function createEventResource(eventIdValue: unknown, input: any, requester: any) {

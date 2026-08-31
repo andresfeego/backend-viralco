@@ -178,13 +178,6 @@ exports.up = async function up(knex) {
     table.bigInteger('event_id').unsigned().notNullable();
     table.bigInteger('logo_resource_id').unsigned().nullable();
     table.bigInteger('background_resource_id').unsigned().nullable();
-    table.string('phone', 64).nullable();
-    table.string('primary_color', 32).nullable();
-    table.string('interval', 32).nullable();
-    table.integer('max_events').nullable();
-    table.integer('max_storage_gb').nullable();
-    table.integer('max_devices').nullable();
-    table.json('features').nullable();
     table.boolean('is_active').notNullable().defaultTo(true);
     table.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
     table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now());

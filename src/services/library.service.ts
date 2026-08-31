@@ -7,7 +7,7 @@ import { db } from '../db/index.ts';
 import { accountLibraryTable, libraryAssetCategoriesTable, libraryAssetsTable, libraryAssetVariantsTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
-import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVariantKey, createPresignedLibraryUpload, LIBRARY_PURPOSES, putR2Object, r2PublicUrl } from '../r2.ts';
+import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVariantKey, createPresignedLibraryUpload, createPresignedReadUrl, LIBRARY_PURPOSES, putR2Object, r2PublicUrl } from '../r2.ts';
 import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
 
 const OWNER_TYPES = new Set(['viralco', 'account']);
@@ -26,41 +26,46 @@ function mapCategory(row: any) {
   return row ? { id: serializeId(row.id), slug: row.slug, name: row.name, description: row.description, isActive: Boolean(row.isActive) } : null;
 }
 
-function mapVariants(rows: any[] = []) {
-  return rows.reduce((acc: any, row: any) => {
-    acc[row.variant] = {
+async function mapVariants(rows: any[] = []) {
+  const entries = await Promise.all(rows.map(async (row: any) => ({
+    key: row.variant,
+    value: {
       id: serializeId(row.id),
       assetId: serializeId(row.assetId),
       variant: row.variant,
       storageKey: row.storageKey,
       fileUrl: row.fileUrl,
+      signedUrl: await createPresignedReadUrl(row.storageKey),
       mimeType: row.mimeType,
       width: row.width,
       height: row.height,
       sizeBytes: serializeId(row.sizeBytes),
       createdAt: row.createdAt,
-    };
+    },
+  })));
+  return entries.reduce((acc: any, entry: any) => {
+    acc[entry.key] = entry.value;
     return acc;
   }, {});
 }
 
-export function mapLibraryAsset(row: any, category?: any, variants?: any[]) {
+export async function mapLibraryAsset(row: any, category?: any, variants?: any[]) {
   if (!row) return null;
   return {
     id: serializeId(row.id), categoryId: serializeId(row.categoryId), category: category ? mapCategory(category) : undefined,
     ownerType: row.ownerType, ownerAccountId: serializeId(row.ownerAccountId), sourceAssetId: serializeId(row.sourceAssetId),
-    name: row.name, type: row.type, storageKey: row.storageKey, fileUrl: row.fileUrl, previewUrl: row.previewUrl,
+    name: row.name, type: row.type, storageKey: row.storageKey, fileUrl: row.fileUrl, fileSignedUrl: await createPresignedReadUrl(row.storageKey), previewUrl: row.previewUrl,
     mimeType: row.mimeType, sizeBytes: serializeId(row.sizeBytes), tags: row.tags || null, metadata: row.metadata || null,
-    variants: variants === undefined ? undefined : mapVariants(variants),
+    variants: variants === undefined ? undefined : await mapVariants(variants),
     status: row.status, createdBy: serializeId(row.createdBy), createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
 
-function mapAccountLibrary(row: any, asset: any, category?: any, variants?: any[]) {
+async function mapAccountLibrary(row: any, asset: any, category?: any, variants?: any[]) {
   return {
     id: serializeId(row.id), accountId: serializeId(row.accountId), libraryAssetId: serializeId(row.libraryAssetId),
     displayName: row.displayName, notes: row.notes, addedBy: serializeId(row.addedBy),
-    asset: mapLibraryAsset(asset, category, variants), createdAt: row.createdAt, updatedAt: row.updatedAt,
+    asset: await mapLibraryAsset(asset, category, variants), createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
 
@@ -266,7 +271,7 @@ export async function listLibraryAssets(query: any, requester: any) {
     .where(accountId ? or(eq(libraryAssetsTable.ownerType, 'viralco'), and(eq(libraryAssetsTable.ownerType, 'account'), eq(libraryAssetsTable.ownerAccountId, accountId))) : undefined as any)
     .orderBy(asc(libraryAssetsTable.ownerType), asc(libraryAssetsTable.type), asc(libraryAssetsTable.name));
   const variantsByAssetId = await findVariants(rows.map((row) => row.asset.id));
-  return rows.map((row) => mapLibraryAsset(row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || []));
+  return Promise.all(rows.map((row) => mapLibraryAsset(row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
 }
 
 export async function listAccountLibrary(accountIdValue: unknown, requester: any) {
@@ -279,7 +284,7 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
     .where(eq(accountLibraryTable.accountId, accountId))
     .orderBy(asc(libraryAssetsTable.type), asc(libraryAssetsTable.name));
   const variantsByAssetId = await findVariants(rows.map((row) => row.asset.id));
-  return rows.map((row) => mapAccountLibrary(row.entry, row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || []));
+  return Promise.all(rows.map((row) => mapAccountLibrary(row.entry, row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
 }
 
 export async function addAssetToAccountLibrary(accountIdValue: unknown, input: any, requester: any) {

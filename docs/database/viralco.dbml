@@ -127,13 +127,6 @@ Table event_branding {
   event_id bigint [not null, unique, ref: > events.id]
   logo_resource_id bigint [ref: > event_resources.id]
   background_resource_id bigint [ref: > event_resources.id]
-  phone varchar(64)
-  primary_color varchar(32)
-  interval varchar(32)
-  max_events int
-  max_storage_gb int
-  max_devices int
-  features json
   is_active boolean [not null, default: true]
   created_at datetime [not null]
   updated_at datetime [not null]
@@ -150,10 +143,13 @@ Table event_users {
 
 Table modes {
   id bigint [pk, increment]
-  slug varchar(80) [not null, unique]
+  slug varchar(80) [not null, unique, note: 'espejo | cabina | video-360']
   name varchar(120) [not null]
   description text
+  price_amount int [not null, default: 0, note: 'Precio base del servicio contratado']
+  price_currency varchar(3) [not null, default: 'USD']
   is_default boolean [not null, default: false]
+  Note: 'Catalogo de servicios contratables. La suscripcion de cuenta aumenta segun los modos activos contratados.'
 }
 
 Table event_modes {
@@ -300,7 +296,7 @@ Table downloads {
 
 Table subscription_plans {
   id bigint [pk, increment]
-  slug varchar(80) [not null, unique]
+  slug varchar(80) [not null, unique, note: 'suscripcion']
   name varchar(120) [not null]
   description text
   limits json
@@ -325,6 +321,19 @@ Table subscriptions {
   updated_at datetime [not null]
   indexes { account_id }
   Note: 'La suscripcion siempre cuelga de la cuenta, nunca del usuario.'
+}
+
+Table subscription_modes {
+  id bigint [pk, increment]
+  subscription_id bigint [not null, ref: > subscriptions.id]
+  mode_id bigint [not null, ref: > modes.id]
+  price_amount int [not null]
+  price_currency varchar(3) [not null, default: 'USD']
+  status varchar(32) [not null, default: 'active', note: 'active | suspended | canceled']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes { (subscription_id, mode_id) [unique] }
+  Note: 'Servicios contratados por la suscripcion de una cuenta. No representa modos habilitados en un evento.'
 }
 
 Table library_asset_categories {
