@@ -8,7 +8,7 @@ import { assertAssetAvailableForEventAccount, getLibraryAssetWithVariants, mapLi
 import { assertAccountCanCreateEvent, assertSubscriptionIncludesModes } from './subscriptions.service.ts';
 
 const EVENT_STATUS = new Set(['draft', 'active', 'archived']);
-const RESOURCE_PURPOSES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'other']);
+const RESOURCE_PURPOSES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'start_screen', 'animation', 'gif_overlay', 'font', 'other']);
 const CONTRACTABLE_MODE_SLUGS = new Set(['espejo', 'cabina', 'video-360']);
 const CONTRACTABLE_MODE_ORDER = ['espejo', 'cabina', 'video-360'];
 

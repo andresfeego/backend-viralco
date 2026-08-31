@@ -390,11 +390,17 @@ export const accountLibraryTable = mysqlTable(
     libraryAssetId: bigint('library_asset_id', { mode: 'bigint', unsigned: true }).notNull(),
     displayName: varchar('display_name', { length: 180 }),
     notes: text('notes'),
+    isFavorite: boolean('is_favorite').notNull().default(false),
+    favoritedAt: datetime('favorited_at'),
+    favoritedBy: bigint('favorited_by', { mode: 'bigint', unsigned: true }),
     addedBy: bigint('added_by', { mode: 'bigint', unsigned: true }).notNull(),
     createdAt: datetime('created_at').notNull(),
     updatedAt: datetime('updated_at').notNull(),
   },
-  (table) => [uniqueIndex('account_library_account_asset_uq').on(table.accountId, table.libraryAssetId)]
+  (table) => [
+    uniqueIndex('account_library_account_asset_uq').on(table.accountId, table.libraryAssetId),
+    index('account_library_account_favorite_idx').on(table.accountId, table.isFavorite),
+  ]
 );
 
 export const eventResourcesTable = mysqlTable(

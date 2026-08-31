@@ -13,14 +13,20 @@ export const LIBRARY_PURPOSES = new Set([
   'logo',
   'background',
   'template',
+  'start_screen',
+  'animation',
+  'gif_overlay',
+  'font',
   'branding',
   'other',
 ]);
 
-const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif', 'image/gif']);
 const AUDIO_TYPES = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/mp4']);
 const VIDEO_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
+const FONT_TYPES = new Set(['font/ttf', 'font/otf', 'font/woff', 'font/woff2', 'application/font-sfnt']);
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
 const SIGNED_UPLOAD_EXPIRES_IN = 300;
 const SIGNED_READ_EXPIRES_IN = 900;
 
@@ -62,8 +68,16 @@ function assertContentTypeForPurpose(purpose: string, contentType: string) {
     if (!AUDIO_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de audio no permitido');
     return;
   }
-  if (purpose === 'intro' || purpose === 'outro') {
+  if (purpose === 'font') {
+    if (!FONT_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de fuente no permitido');
+    return;
+  }
+  if (purpose === 'intro' || purpose === 'outro' || purpose === 'animation' || purpose === 'start_screen') {
     if (!IMAGE_TYPES.has(contentType) && !VIDEO_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de archivo no permitido');
+    return;
+  }
+  if (purpose === 'gif_overlay') {
+    if (!IMAGE_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de overlay no permitido');
     return;
   }
   if (!IMAGE_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de imagen no permitido');
@@ -77,7 +91,8 @@ export function assertLibraryUploadInput(input: any) {
 
   if (!LIBRARY_PURPOSES.has(purpose)) throw new ServiceError(400, 'Proposito de upload invalido');
   assertContentTypeForPurpose(purpose, contentType);
-  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_UPLOAD_BYTES) throw new ServiceError(400, 'Tamano de archivo invalido');
+  const maxBytes = VIDEO_TYPES.has(contentType) ? MAX_VIDEO_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > maxBytes) throw new ServiceError(400, 'Tamano de archivo invalido');
   if (!rawFileName) throw new ServiceError(400, 'Nombre de archivo requerido');
 
   return { purpose, contentType, fileName: safeFileName(rawFileName), sizeBytes };

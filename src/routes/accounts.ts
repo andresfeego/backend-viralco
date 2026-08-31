@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postAccountSelf, postMember } from '../controllers/accounts.controller.ts';
-import { getAccountLibrary, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryImageUpload, postAccountLibraryUpload } from '../controllers/library.controller.ts';
+import { getAccountLibrary, patchAccountLibraryFavorite, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryImageUpload, postAccountLibraryUpload } from '../controllers/library.controller.ts';
 import { getAccountEvents, postAccountEvent } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
@@ -21,6 +21,7 @@ router.post('/:accountId/library/image-upload', uploadImage.single('file'), post
 router.post('/:accountId/library/assets', postAccountLibraryAsset);
 router.post('/:accountId/library', postAccountLibraryEntry);
 router.post('/:accountId/library/:libraryAssetId/clone', postAccountLibraryClone);
+router.patch('/:accountId/library/:libraryAssetId/favorite', patchAccountLibraryFavorite);
 router.get('/:accountId/members', getMembers);
 router.post('/:accountId/members', postMember);
 router.patch('/:accountId/members/:membershipId', patchMember);

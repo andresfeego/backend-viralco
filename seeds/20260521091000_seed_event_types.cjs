@@ -30,6 +30,9 @@ const CATEGORIES = [
   { slug: 'branding', name: 'Branding', description: 'Logos, fondos y piezas de marca' },
   { slug: 'music', name: 'Musica', description: 'Recursos de audio' },
   { slug: 'templates', name: 'Templates', description: 'Plantillas reutilizables' },
+  { slug: 'animations', name: 'Animaciones', description: 'Videos y secuencias de experiencia' },
+  { slug: 'gifs', name: 'GIFs', description: 'Overlays y recursos animados' },
+  { slug: 'fonts', name: 'Fuentes', description: 'Tipografias reutilizables' },
 ];
 
 /** @param {import('knex').Knex} knex */

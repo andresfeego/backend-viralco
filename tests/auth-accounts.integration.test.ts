@@ -199,6 +199,18 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(resource.status).toBe(201);
     expect(resource.body.resource.asset.fileUrl).toBe(prepared.body.fileUrl);
 
+    const favorite = await request(app).patch(`/api/accounts/${accountId}/library/${asset.body.asset.id}/favorite`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ isFavorite: true });
+    expect(favorite.status).toBe(200);
+    expect(favorite.body.library.isFavorite).toBe(true);
+
+    const favorites = await request(app).get(`/api/accounts/${accountId}/library?favorite=true&type=template&q=Plantilla&page=1&pageSize=10`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(favorites.status).toBe(200);
+    expect(favorites.body.library).toHaveLength(1);
+    expect(favorites.body.pagination.total).toBe(1);
+
     const configPath = `/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/config`;
     const draft = await request(app).get(configPath).set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(draft.status).toBe(200);

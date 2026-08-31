@@ -9,6 +9,7 @@ import {
   listLibraryAssets,
   prepareAccountLibraryUpload,
   prepareGlobalLibraryUpload,
+  setAccountLibraryFavorite,
 } from '../services/library.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
@@ -36,8 +37,13 @@ export async function postGlobalLibraryImageUpload(req: any, res: any) {
 }
 
 export async function getAccountLibrary(req: any, res: any) {
-  try { res.status(200).json({ library: await listAccountLibrary(req.params.accountId, req.authUser) }); }
+  try { res.status(200).json(await listAccountLibrary(req.params.accountId, req.authUser, req.query || {})); }
   catch (error) { sendError(res, error, 'No se pudo listar biblioteca de cuenta'); }
+}
+
+export async function patchAccountLibraryFavorite(req: any, res: any) {
+  try { res.status(200).json({ library: await setAccountLibraryFavorite(req.params.accountId, req.params.libraryAssetId, req.body || {}, req.authUser) }); }
+  catch (error) { sendError(res, error, 'No se pudo actualizar favorito'); }
 }
 
 export async function postAccountLibraryUpload(req: any, res: any) {

@@ -396,7 +396,7 @@ Table library_assets {
   owner_account_id bigint [ref: > accounts.id]
   source_asset_id bigint [ref: > library_assets.id]
   name varchar(180) [not null]
-  type varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | other']
+  type varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | start_screen | animation | gif_overlay | font | other']
   storage_key varchar(1024) [not null, unique]
   file_url varchar(2048) [not null]
   preview_url varchar(2048)
@@ -432,10 +432,16 @@ Table account_library {
   library_asset_id bigint [not null, ref: > library_assets.id]
   display_name varchar(180)
   notes text
+  is_favorite boolean [not null, default: false]
+  favorited_at datetime
+  favorited_by bigint [ref: > users.id]
   added_by bigint [not null, ref: > users.id]
   created_at datetime [not null]
   updated_at datetime [not null]
-  indexes { (account_id, library_asset_id) [unique] }
+  indexes {
+    (account_id, library_asset_id) [unique]
+    (account_id, is_favorite)
+  }
   Note: 'Coleccion privada de la cuenta. Referencia recursos globales sin duplicar archivos; si se personaliza, se clona en library_assets con owner account.'
 }
 
@@ -444,7 +450,7 @@ Table event_resources {
   event_id bigint [not null, ref: > events.id]
   library_asset_id bigint [not null, ref: > library_assets.id]
   event_mode_id bigint [ref: > event_modes.id]
-  purpose varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | branding | other']
+  purpose varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | start_screen | animation | gif_overlay | font | branding | other']
   placement varchar(32)
   config json
   order_index int [not null, default: 0]

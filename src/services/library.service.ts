@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
 import { fileTypeFromBuffer } from 'file-type';
 import heicConvert from 'heic-convert';
 import sharp from 'sharp';
@@ -11,7 +11,7 @@ import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVaria
 import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
 
 const OWNER_TYPES = new Set(['viralco', 'account']);
-const ASSET_TYPES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'other']);
+const ASSET_TYPES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'start_screen', 'animation', 'gif_overlay', 'font', 'other']);
 const ASSET_STATUSES = new Set(['draft', 'active', 'archived']);
 const PROCESSABLE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
 const HEIC_TYPES = new Set(['image/heic', 'image/heif']);
@@ -64,7 +64,8 @@ export async function mapLibraryAsset(row: any, category?: any, variants?: any[]
 async function mapAccountLibrary(row: any, asset: any, category?: any, variants?: any[]) {
   return {
     id: serializeId(row.id), accountId: serializeId(row.accountId), libraryAssetId: serializeId(row.libraryAssetId),
-    displayName: row.displayName, notes: row.notes, addedBy: serializeId(row.addedBy),
+    displayName: row.displayName, notes: row.notes, isFavorite: Boolean(row.isFavorite), favoritedAt: row.favoritedAt,
+    favoritedBy: serializeId(row.favoritedBy), addedBy: serializeId(row.addedBy),
     asset: await mapLibraryAsset(asset, category, variants), createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
@@ -274,17 +275,38 @@ export async function listLibraryAssets(query: any, requester: any) {
   return Promise.all(rows.map((row) => mapLibraryAsset(row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
 }
 
-export async function listAccountLibrary(accountIdValue: unknown, requester: any) {
+export async function listAccountLibrary(accountIdValue: unknown, requester: any, query: any = {}) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
   await assertAccountAccess(accountId, requester, 'read', 'library.view');
+  const page = Math.max(1, Math.floor(Number(query?.page) || 1));
+  const pageSize = Math.min(100, Math.max(1, Math.floor(Number(query?.pageSize) || 30)));
+  const conditions: any[] = [eq(accountLibraryTable.accountId, accountId)];
+  if (String(query?.favorite || '') === 'true') conditions.push(eq(accountLibraryTable.isFavorite, true));
+  if (String(query?.favorite || '') === 'false') conditions.push(eq(accountLibraryTable.isFavorite, false));
+  const type = String(query?.type || '').trim();
+  const category = String(query?.category || '').trim();
+  const search = String(query?.q || '').trim();
+  if (type) conditions.push(eq(libraryAssetsTable.type, type));
+  if (category) conditions.push(eq(libraryAssetCategoriesTable.slug, category));
+  if (search) conditions.push(or(like(libraryAssetsTable.name, `%${search}%`), like(accountLibraryTable.displayName, `%${search}%`))!);
+  const where = and(...conditions);
   const rows = await db.select({ entry: accountLibraryTable, asset: libraryAssetsTable, category: libraryAssetCategoriesTable })
     .from(accountLibraryTable)
     .innerJoin(libraryAssetsTable, eq(accountLibraryTable.libraryAssetId, libraryAssetsTable.id))
     .leftJoin(libraryAssetCategoriesTable, eq(libraryAssetsTable.categoryId, libraryAssetCategoriesTable.id))
-    .where(eq(accountLibraryTable.accountId, accountId))
-    .orderBy(asc(libraryAssetsTable.type), asc(libraryAssetsTable.name));
+    .where(where)
+    .orderBy(desc(accountLibraryTable.isFavorite), asc(libraryAssetsTable.type), asc(libraryAssetsTable.name))
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+  const [countRow] = await db.select({ count: sql<number>`count(*)` })
+    .from(accountLibraryTable)
+    .innerJoin(libraryAssetsTable, eq(accountLibraryTable.libraryAssetId, libraryAssetsTable.id))
+    .leftJoin(libraryAssetCategoriesTable, eq(libraryAssetsTable.categoryId, libraryAssetCategoriesTable.id))
+    .where(where);
   const variantsByAssetId = await findVariants(rows.map((row) => row.asset.id));
-  return Promise.all(rows.map((row) => mapAccountLibrary(row.entry, row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
+  const library = await Promise.all(rows.map((row) => mapAccountLibrary(row.entry, row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
+  const total = Number(countRow?.count || 0);
+  return { library, pagination: { page, pageSize, total, pageCount: Math.ceil(total / pageSize) } };
 }
 
 export async function addAssetToAccountLibrary(accountIdValue: unknown, input: any, requester: any) {
@@ -299,7 +321,20 @@ export async function addAssetToAccountLibrary(accountIdValue: unknown, input: a
     accountId, libraryAssetId, displayName: String(input?.displayName || '').trim() || null,
     notes: String(input?.notes || '').trim() || null, addedBy: parseEntityId(requester.id), createdAt: now, updatedAt: now,
   }).onDuplicateKeyUpdate({ set: { updatedAt: now } });
-  return listAccountLibrary(accountId, requester);
+  return (await listAccountLibrary(accountId, requester)).library;
+}
+
+export async function setAccountLibraryFavorite(accountIdValue: unknown, assetIdValue: unknown, input: any, requester: any) {
+  const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
+  const libraryAssetId = parseEntityId(assetIdValue, 'ID de recurso');
+  await assertAccountAccess(accountId, requester, 'write', 'library.manage');
+  const [entry] = await db.select().from(accountLibraryTable).where(and(eq(accountLibraryTable.accountId, accountId), eq(accountLibraryTable.libraryAssetId, libraryAssetId))).limit(1);
+  if (!entry) throw new ServiceError(404, 'Recurso no pertenece al pool de la cuenta');
+  const isFavorite = Boolean(input?.isFavorite);
+  const now = new Date();
+  await db.update(accountLibraryTable).set({ isFavorite, favoritedAt: isFavorite ? now : null, favoritedBy: isFavorite ? parseEntityId(requester.id) : null, updatedAt: now }).where(eq(accountLibraryTable.id, entry.id));
+  const result = await listAccountLibrary(accountId, requester, { pageSize: 100 });
+  return result.library.find((item: any) => item.libraryAssetId === serializeId(libraryAssetId));
 }
 
 export async function cloneAssetForAccount(accountIdValue: unknown, assetIdValue: unknown, input: any, requester: any) {
