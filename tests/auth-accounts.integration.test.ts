@@ -217,6 +217,24 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(draft.body.config.revision).toBe(0);
     draft.body.config.config.resources.templateResourceId = resource.body.resource.id;
 
+    const invalidPurposeConfig = structuredClone(draft.body.config.config);
+    invalidPurposeConfig.resources.templateResourceId = null;
+    invalidPurposeConfig.resources.frameResourceId = resource.body.resource.id;
+    const invalidPurpose = await request(app).post(`${configPath}/validate`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ config: invalidPurposeConfig, publish: true });
+    expect(invalidPurpose.status).toBe(200);
+    expect(invalidPurpose.body.valid).toBe(false);
+    expect(invalidPurpose.body.errors.some((entry: any) => entry.code === 'RESOURCE_PURPOSE_MISMATCH')).toBe(true);
+
+    const invalidLayoutConfig = structuredClone(draft.body.config.config);
+    invalidLayoutConfig.layout.order = [2];
+    const invalidLayout = await request(app).post(`${configPath}/validate`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ config: invalidLayoutConfig });
+    expect(invalidLayout.body.valid).toBe(false);
+    expect(invalidLayout.body.errors.some((entry: any) => entry.code === 'SHOT_ORDER_INVALID')).toBe(true);
+
     const saved = await request(app).put(configPath)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ expectedRevision: 0, schemaVersion: 1, config: draft.body.config.config });

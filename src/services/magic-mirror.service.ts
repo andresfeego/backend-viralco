@@ -13,6 +13,7 @@ import {
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess } from './account-access.service.ts';
+import { getLibraryAssetWithVariants } from './library.service.ts';
 import { assertSubscriptionIncludesModes } from './subscriptions.service.ts';
 
 export const MIRROR_SCHEMA_VERSION = 1;
@@ -83,6 +84,15 @@ function localValidation(config: any, publish = false) {
   }
   const slots = Array.isArray(layout.slots) ? layout.slots : [];
   if (slots.length !== shotCount) errors.push(issue('layout.slots', 'SLOTS_COUNT_INVALID', 'Debe existir un slot por toma'));
+  const order = Array.isArray(layout.order) ? layout.order.map(Number) : [];
+  const expectedOrder = Array.from({ length: shotCount }, (_, index) => index + 1);
+  if (order.length !== shotCount || new Set(order).size !== shotCount || order.some((value) => !expectedOrder.includes(value))) {
+    errors.push(issue('layout.order', 'SHOT_ORDER_INVALID', 'El orden debe incluir cada toma exactamente una vez'));
+  }
+  const slotPhotoNumbers = slots.map((slot: any) => Number(slot?.photoNumber));
+  if (new Set(slotPhotoNumbers).size !== slots.length || slotPhotoNumbers.some((value) => !expectedOrder.includes(value))) {
+    errors.push(issue('layout.slots', 'SLOT_PHOTO_NUMBER_INVALID', 'Cada slot debe corresponder a una toma unica'));
+  }
   slots.forEach((slot: any, index: number) => {
     const values = [slot?.x, slot?.y, slot?.width, slot?.height].map(Number);
     if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] < 0 || values[2] <= 0 || values[3] <= 0 || values[0] + values[2] > 100 || values[1] + values[3] > 100) {
@@ -94,7 +104,11 @@ function localValidation(config: any, publish = false) {
   });
   if (config.gif?.enabled) errors.push(issue('gif.enabled', 'CAPABILITY_UNAVAILABLE', 'La generacion GIF aun no esta disponible'));
   if (config.backgroundRemoval?.enabled) errors.push(issue('backgroundRemoval.enabled', 'CAPABILITY_UNAVAILABLE', 'La eliminacion de fondo aun no esta disponible'));
-  if (config.print?.enabled || config.delivery?.print) warnings.push(issue('print.enabled', 'PRINTER_RUNTIME_PENDING', 'La impresion fisica se validara en el dispositivo'));
+  const print = config.print || {};
+  if (Number(print.paperWidthCm) !== 10 || Number(print.paperHeightCm) !== 14.8 || print.orientation !== 'portrait' || Number(print.dpi) !== 300 || Number(print.copies) !== 1 || print.fit !== 'contain') {
+    errors.push(issue('print', 'PRINT_FORMAT_INVALID', 'La impresion debe usar 10 x 14.8 cm, retrato, 300 DPI, una copia y ajuste contain'));
+  }
+  if (config.print?.enabled || config.delivery?.print) errors.push(issue('print.enabled', 'CAPABILITY_UNAVAILABLE', 'La impresion fisica aun no esta disponible'));
   const resources = config.resources || {};
   if (publish && !resources.templateResourceId && !resources.frameResourceId) {
     errors.push(issue('resources', 'FRAME_REQUIRED', 'Selecciona una plantilla o marco antes de publicar'));
@@ -113,6 +127,26 @@ function resourceIds(config: any) {
     resources.fontResourceId,
     ...(Array.isArray(resources.animationResourceIds) ? resources.animationResourceIds : []),
   ].filter(Boolean).map((value) => String(value)))];
+}
+
+function expectedResource(config: any, id: string) {
+  const resources = config?.resources || {};
+  if (String(resources.templateResourceId || '') === id) return { purpose: 'template', family: 'image' };
+  if (String(resources.frameResourceId || '') === id) return { purpose: 'frame', family: 'image' };
+  if (String(resources.gifOverlayResourceId || '') === id) return { purpose: 'gif_overlay', family: 'image' };
+  if (String(resources.startScreenResourceId || '') === id) return { purpose: 'start_screen', family: 'visual' };
+  if (String(resources.backgroundResourceId || '') === id) return { purpose: 'background', family: 'image' };
+  if (String(resources.fontResourceId || '') === id) return { purpose: 'font', family: 'font' };
+  return { purpose: 'animation', family: 'video' };
+}
+
+function mimeMatchesFamily(mimeType: unknown, family: string) {
+  const mime = String(mimeType || '').toLowerCase();
+  if (family === 'image') return mime.startsWith('image/');
+  if (family === 'video') return mime.startsWith('video/');
+  if (family === 'font') return mime.startsWith('font/') || ['application/font-sfnt', 'application/vnd.ms-opentype'].includes(mime);
+  if (family === 'visual') return mime.startsWith('image/') || mime.startsWith('video/');
+  return false;
 }
 
 async function getMirrorContext(eventIdValue: unknown, eventModeIdValue: unknown, requester: any, permission: string) {
@@ -149,13 +183,15 @@ async function validateResources(context: any, config: any) {
     }
     if (row.resource.eventModeId && row.resource.eventModeId !== context.eventModeId) errors.push(issue(`resources.${id}`, 'RESOURCE_MODE_MISMATCH', 'El recurso pertenece a otro modo'));
     if (!row.resource.isActive || row.asset.status !== 'active') errors.push(issue(`resources.${id}`, 'RESOURCE_INACTIVE', 'El recurso esta inactivo'));
+    if (row.asset.ownerType === 'account' && row.asset.ownerAccountId !== context.event.accountId) errors.push(issue(`resources.${id}`, 'RESOURCE_ACCOUNT_MISMATCH', 'El recurso pertenece a otra cuenta'));
+    const expected = expectedResource(config, id);
+    if (row.resource.purpose !== expected.purpose || row.asset.type !== expected.purpose) errors.push(issue(`resources.${id}`, 'RESOURCE_PURPOSE_MISMATCH', `El recurso debe tener proposito ${expected.purpose}`));
+    if (!mimeMatchesFamily(row.asset.mimeType, expected.family)) errors.push(issue(`resources.${id}`, 'RESOURCE_MIME_MISMATCH', 'El formato del recurso no corresponde a su proposito'));
   }
-  const manifest = rows.map(({ resource, asset }) => ({
-    eventResourceId: serializeId(resource.id),
-    purpose: resource.purpose,
-    placement: resource.placement,
-    asset: { id: serializeId(asset.id), name: asset.name, type: asset.type, mimeType: asset.mimeType, fileUrl: asset.fileUrl, previewUrl: asset.previewUrl },
-  }));
+  const manifest = await Promise.all(rows.map(async ({ resource, asset }) => ({
+    eventResourceId: serializeId(resource.id), purpose: resource.purpose, placement: resource.placement,
+    asset: await getLibraryAssetWithVariants(asset.id),
+  })));
   return { errors, manifest };
 }
 
@@ -204,7 +240,8 @@ export async function saveMirrorConfig(eventIdValue: unknown, eventModeIdValue: 
   if (!current) {
     await db.insert(eventModeConfigsTable).values({ eventModeId: context.eventModeId, schemaVersion: MIRROR_SCHEMA_VERSION, revision: 1, config: input.config, updatedBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
   } else {
-    await db.update(eventModeConfigsTable).set({ revision: current.revision + 1, config: input.config, updatedBy: parseEntityId(requester.id), updatedAt: now }).where(and(eq(eventModeConfigsTable.id, current.id), eq(eventModeConfigsTable.revision, expectedRevision)));
+    const result: any = await db.update(eventModeConfigsTable).set({ revision: current.revision + 1, config: input.config, updatedBy: parseEntityId(requester.id), updatedAt: now }).where(and(eq(eventModeConfigsTable.id, current.id), eq(eventModeConfigsTable.revision, expectedRevision)));
+    if (!Number(result?.[0]?.affectedRows || 0)) throw new ServiceError(409, JSON.stringify({ code: 'CONFIG_REVISION_CONFLICT', currentRevision: current.revision }));
   }
   return getMirrorConfig(eventIdValue, eventModeIdValue, requester);
 }

@@ -42,3 +42,11 @@ Se admiten los propositos `start_screen`, `animation`, `gif_overlay` y `font`, a
 - `expectedRevision` evita sobrescrituras; el conflicto responde `CONFIG_REVISION_CONFLICT` con HTTP 409.
 - Un recurso de modo pertenece al mismo evento y, si es especifico, al mismo `event_mode`.
 - Todos los IDs bigint salen de la API como strings.
+
+## Estado implementado
+
+- El borrador optimista, las publicaciones inmutables y las sesiones idempotentes estan activos en los endpoints documentados.
+- La publicacion valida orden y slots, formato de impresion, suscripcion, cuenta, evento, modo, proposito y familia MIME de cada recurso.
+- El manifiesto de lanzamiento resuelve el asset y sus variantes; la configuracion publicada conserva solo IDs.
+- La bitacora HTTP existente registra guardados, publicaciones, inicios, heartbeats exitosos o fallidos y cierres sin exponer secretos.
+- El importador `assets:import:magic-mirror` usa un manifiesto versionado, hash y keys deterministas. Requiere una raiz local aprobada y credenciales R2 al momento de ejecutar la migracion de binarios.
