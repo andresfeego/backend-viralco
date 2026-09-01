@@ -14,6 +14,7 @@ run('auth, accounts, subscriptions and events integration', () => {
   let ownerLogin: any;
   let superLogin: any;
   let accountId: string;
+  let adminAccountId: string;
 
   beforeAll(async () => {
     await db.delete(eventBrandingTable);
@@ -84,6 +85,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(created.status).toBe(201);
     expect(created.body.account.subscription.status).toBe('active');
     expect(created.body.account.subscription.metadata.createdByAdmin).toBe(true);
+    adminAccountId = created.body.account.id;
 
     await db.update(accountsTable).set({ isSystem: true }).where(eq(accountsTable.id, BigInt(created.body.account.id)));
     const protectedStatus = await request(app).patch(`/api/admin/accounts/${created.body.account.id}/status`)
@@ -174,6 +176,64 @@ run('auth, accounts, subscriptions and events integration', () => {
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ name: 'Sin Subs', slug: 'sin-subs', eventTypeSlug: 'boda', startDate: '2026-10-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
     expect(event.status).toBe(403);
+  });
+
+  it('exposes active global assets dynamically and isolates shared account favorites', async () => {
+    const now = new Date();
+    const globalInsert = await db.insert(libraryAssetsTable).values({
+      ownerType: 'viralco', ownerAccountId: null, sourceAssetId: null,
+      name: 'Marco Global Fototeca', type: 'frame', storageKey: 'viralco/library/test/marco-global.png',
+      fileUrl: 'https://assets.test/marco-global.png', previewUrl: 'https://assets.test/marco-global-thumb.webp',
+      mimeType: 'image/png', sizeBytes: 100n, tags: ['espejo'], metadata: { mirrorCompatible: true },
+      status: 'active', createdBy: BigInt(superLogin.body.user.id), createdAt: now, updatedAt: now,
+    });
+    const globalAssetId = String(globalInsert[0].insertId);
+    await db.insert(libraryAssetsTable).values({
+      ownerType: 'viralco', ownerAccountId: null, sourceAssetId: null,
+      name: 'Marco Global Archivado', type: 'frame', storageKey: 'viralco/library/test/marco-archivado.png',
+      fileUrl: 'https://assets.test/marco-archivado.png', previewUrl: null,
+      mimeType: 'image/png', sizeBytes: 100n, tags: null, metadata: null,
+      status: 'archived', createdBy: BigInt(superLogin.body.user.id), createdAt: now, updatedAt: now,
+    });
+
+    const linkedBefore = await request(app).get(`/api/accounts/${accountId}/library`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(linkedBefore.status).toBe(200);
+    expect(linkedBefore.body.library.some((item: any) => item.libraryAssetId === globalAssetId)).toBe(false);
+
+    const global = await request(app).get(`/api/accounts/${accountId}/library?scope=global&type=frame&q=Fototeca&page=1&pageSize=10`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(global.status).toBe(200);
+    expect(global.body.library).toHaveLength(1);
+    expect(global.body.library[0]).toMatchObject({ id: null, libraryAssetId: globalAssetId, isFavorite: false });
+    expect(global.body.pagination.total).toBe(1);
+
+    const favorite = await request(app).patch(`/api/accounts/${accountId}/library/${globalAssetId}/favorite`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ isFavorite: true });
+    expect(favorite.status).toBe(200);
+    expect(favorite.body.library).toMatchObject({ libraryAssetId: globalAssetId, isFavorite: true });
+    expect(favorite.body.library.id).toEqual(expect.any(String));
+
+    const favorites = await request(app).get(`/api/accounts/${accountId}/library?scope=global&favorite=true`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(favorites.status).toBe(200);
+    expect(favorites.body.library.map((item: any) => item.libraryAssetId)).toContain(globalAssetId);
+
+    const otherAccount = await request(app).get(`/api/accounts/${adminAccountId}/library?scope=global&favorite=true`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(otherAccount.status).toBe(200);
+    expect(otherAccount.body.library.map((item: any) => item.libraryAssetId)).not.toContain(globalAssetId);
+
+    const unfavorite = await request(app).patch(`/api/accounts/${accountId}/library/${globalAssetId}/favorite`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ isFavorite: false });
+    expect(unfavorite.status).toBe(200);
+    expect(unfavorite.body.library.isFavorite).toBe(false);
+
+    const invalidScope = await request(app).get(`/api/accounts/${accountId}/library?scope=unknown`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(invalidScope.status).toBe(400);
   });
 
   it('creates library assets and assigns event resources instead of direct URLs', async () => {
