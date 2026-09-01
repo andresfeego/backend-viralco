@@ -45,3 +45,6 @@ Owner, administrador y Super Admin pueden editar. Un operador consume la publica
 - Guardar, validar, recuperar un conflicto y publicar funcionan con permisos reales.
 - Pruebas backend y mobile, lint, temas e i18n quedan verdes.
 
+## Estado final
+
+Fase `COMPLETA`. El contrato fue implementado sin migraciones ni endpoints nuevos. La publicacion resultante queda disponible para el preflight y lanzamiento operativo de la fase D.

@@ -77,7 +77,7 @@ Estado: `COMPLETADA`.
 
 ## Fase C — Configurador visual de Espejo
 
-Estado: `EN_PROGRESO`.
+Estado: `COMPLETA`.
 
 El contrato de implementacion vive en [`espejo-magico-fase-c.md`](./espejo-magico-fase-c.md).
 
@@ -102,6 +102,14 @@ El contrato de implementacion vive en [`espejo-magico-fase-c.md`](./espejo-magic
 - Un operador puede consultar la versión publicada, pero no editarla.
 - El preview refleja el mismo contrato enviado al backend.
 - Pruebas de validación, permisos, conflictos, restauración, temas e i18n verdes.
+
+### Evidencia de cierre
+
+- `MirrorConfigV1` valida los siete formatos productivos y conserva el alias legado `digital-vertical`.
+- Geometria, textos, captura, experiencia, entrega, runtime y etapas de animacion tienen validacion versionada.
+- El configurador mobile guarda, restaura, valida, resuelve conflictos y publica revisiones inmutables.
+- Owner, administrador y Super Admin editan; operador consume exclusivamente la publicacion activa.
+- Build backend, 21 pruebas unitarias, 10 pruebas de integracion con reseed, 45 pruebas mobile, lint y bundle iOS verificados.
 
 ### Dependencias
 
