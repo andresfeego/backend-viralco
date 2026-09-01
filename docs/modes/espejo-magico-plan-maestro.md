@@ -4,13 +4,14 @@
 
 Este documento es la fuente de verdad para la entrega progresiva del modo `espejo`. Define alcance, dependencias, estado y criterio de cierre de las fases A–H. Los detalles técnicos ya implementados de A y B permanecen en [`espejo-magico-fases-a-b.md`](./espejo-magico-fases-a-b.md).
 
-Ultima actualizacion: 2026-08-31.
+Ultima actualizacion: 2026-09-01.
 
 ## Estados
 
 - `COMPLETADA`: alcance implementado, probado, documentado y publicado en la rama de trabajo.
 - `EN_PROGRESO`: existe una parte operativa, pero faltan entregables obligatorios para cerrar la fase.
 - `PENDIENTE`: no se ha iniciado su implementación de producto.
+- `PAUSADA`: el trabajo se detiene deliberadamente hasta cerrar una dependencia prioritaria.
 - `FUERA_DE_ALCANCE_ACTUAL`: decisión explícita de no incluirla en la iteración vigente.
 
 ## Resumen ejecutivo
@@ -19,8 +20,9 @@ Ultima actualizacion: 2026-08-31.
 | --- | --- | --- | --- |
 | A | Contrato, configuración y sesiones backend | `COMPLETADA` | Consumir el contrato desde el configurador móvil |
 | B | Pool, favoritos y recursos | `COMPLETADA` | Reutilizar `ResourcePicker` dentro de la fase C |
-| C | Configurador visual de Espejo | `PENDIENTE` | Diseñar e implementar el flujo mobile completo |
-| D | Preparación y lanzamiento operativo | `EN_PROGRESO` | Construir preflight, caché y control de sesión en mobile |
+| B.1 | Fototeca global ViralCo | `COMPLETADA` | Consumir el alcance `available` desde el configurador |
+| C | Configurador visual de Espejo | `COMPLETA` | Entregar su publicación al lanzamiento operativo |
+| D | Preparación y lanzamiento operativo | `PAUSADA` | Retomar preflight, caché y control de sesión después de B.1 |
 | E | Runtime de captura Espejo | `PENDIENTE` | Implementar cámara y secuencia de tomas después de D |
 | F | Composición y entregable | `PENDIENTE` | Implementar render final y pipeline del asset |
 | G | Entrega al invitado | `PENDIENTE` | Integrar QR, descarga, compartir y página pública |
@@ -70,10 +72,25 @@ Estado: `COMPLETADA`.
 ### Evidencia de cierre
 
 - 19 assets canónicos importados: 6 plantillas, 3 marcos y 10 animaciones.
-- 27 variantes de preview y 46 objetos verificados en R2.
-- Los 19 assets están enlazados al pool de `viralco_platform` sin duplicar binarios.
+- 47 variantes de preview y 66 objetos verificados en R2.
+- Los 19 assets se publican como globales de ViralCo; B.1 elimina la necesidad de enlazarlos previamente a cada cuenta.
 - Segunda importación verificada con 19 omisiones y cero fallos.
 - Componentes `ResourceLibraryScreen`, `ResourcePicker`, `ResourceCard`, `ResourceFilters`, `ResourceUploadAction` y `ResourceSelectionSummary`.
+
+## Refinamiento B.1 — Fototeca global ViralCo
+
+Estado: `COMPLETADA`.
+
+El contrato y la evidencia detallada viven en [`espejo-magico-fototeca-global-b1.md`](./espejo-magico-fototeca-global-b1.md).
+
+### Alcance
+
+- Catalogo global visible sin crear previamente `account_library`.
+- Scopes compatibles `linked`, `global` y `available`.
+- Favoritos compartidos por cuenta mediante upsert.
+- Posters WebP de videos globales y reparacion idempotente de variantes.
+- Fototeca mobile densa con Global/Favoritos, filtros, busqueda, preview y paginacion incremental.
+- Configurador sin cambios visuales y consumiendo `scope=available`.
 
 ## Fase C — Configurador visual de Espejo
 
@@ -117,7 +134,7 @@ El contrato de implementacion vive en [`espejo-magico-fase-c.md`](./espejo-magic
 
 ## Fase D — Preparación y lanzamiento operativo
 
-Estado: `EN_PROGRESO`.
+Estado: `PAUSADA`.
 
 La infraestructura backend de sesiones está completa; la experiencia mobile todavía está pendiente.
 La experiencia de lanzamiento consumira la publicacion producida por el configurador de la fase C.
@@ -244,8 +261,8 @@ Una capacidad solo puede habilitarse en `MirrorConfigV1` cuando backend, disposi
 
 ## Orden aprobado de trabajo
 
-1. Implementar C.
-2. Completar D en mobile y dispositivos reales.
+1. Mantener B.1 y C estabilizadas.
+2. Retomar y completar D en mobile y dispositivos reales.
 3. Implementar E.
 4. Implementar F.
 5. Implementar G.
