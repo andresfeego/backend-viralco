@@ -77,7 +77,9 @@ Estado: `COMPLETADA`.
 
 ## Fase C — Configurador visual de Espejo
 
-Estado: `PENDIENTE`.
+Estado: `EN_PROGRESO`.
+
+El contrato de implementacion vive en [`espejo-magico-fase-c.md`](./espejo-magico-fase-c.md).
 
 ### Alcance
 
@@ -110,6 +112,7 @@ Estado: `PENDIENTE`.
 Estado: `EN_PROGRESO`.
 
 La infraestructura backend de sesiones está completa; la experiencia mobile todavía está pendiente.
+La experiencia de lanzamiento consumira la publicacion producida por el configurador de la fase C.
 
 ### Alcance pendiente
 
