@@ -188,7 +188,7 @@ run('auth, accounts, subscriptions and events integration', () => {
       status: 'active', createdBy: BigInt(superLogin.body.user.id), createdAt: now, updatedAt: now,
     });
     const globalAssetId = String(globalInsert[0].insertId);
-    await db.insert(libraryAssetsTable).values({
+    const archivedInsert = await db.insert(libraryAssetsTable).values({
       ownerType: 'viralco', ownerAccountId: null, sourceAssetId: null,
       name: 'Marco Global Archivado', type: 'frame', storageKey: 'viralco/library/test/marco-archivado.png',
       fileUrl: 'https://assets.test/marco-archivado.png', previewUrl: null,
@@ -234,6 +234,10 @@ run('auth, accounts, subscriptions and events integration', () => {
     const invalidScope = await request(app).get(`/api/accounts/${accountId}/library?scope=unknown`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(invalidScope.status).toBe(400);
+
+    await db.delete(accountLibraryTable).where(eq(accountLibraryTable.libraryAssetId, BigInt(globalAssetId)));
+    await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, BigInt(globalAssetId)));
+    await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, BigInt(archivedInsert[0].insertId)));
   });
 
   it('creates library assets and assigns event resources instead of direct URLs', async () => {

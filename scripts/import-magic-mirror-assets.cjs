@@ -3,7 +3,9 @@ require('dotenv/config');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const ffmpegPath = require('ffmpeg-static');
 const knexFactory = require('knex');
 const sharp = require('sharp');
 const knexConfig = require('../knexfile.cjs');
@@ -44,6 +46,56 @@ async function put(key, body, contentType) {
   return `${publicBase}/${key}`;
 }
 
+function videoPoster(sourcePath) {
+  if (!ffmpegPath) throw new Error('Binario FFmpeg no disponible');
+  for (const seek of ['0.5', '0']) {
+    const result = spawnSync(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error', '-ss', seek, '-i', sourcePath,
+      '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1',
+    ], { encoding: null, maxBuffer: 50 * 1024 * 1024 });
+    if (result.status === 0 && result.stdout?.length) return result.stdout;
+  }
+  throw new Error(`No se pudo generar poster de ${sourcePath}`);
+}
+
+async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType) {
+  const configs = mimeType.startsWith('video/')
+    ? [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }]
+    : [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }, { name: 'full', size: 1600 }];
+  const existing = await db('library_asset_variants').where({ asset_id: assetId }).select('variant', 'file_url');
+  const existingByName = new Map(existing.map((variant) => [variant.variant, variant]));
+  const missing = configs.filter((variant) => !existingByName.has(variant.name));
+  if (!missing.length) return 0;
+  if (dryRun) return missing.length;
+
+  const previewInput = mimeType.startsWith('video/') ? videoPoster(sourcePath) : body;
+  let thumbUrl = existingByName.get('thumb')?.file_url || null;
+  for (const variant of missing) {
+    const rendered = await sharp(previewInput, { animated: false }).rotate().resize({
+      width: variant.size,
+      height: variant.size,
+      fit: 'inside',
+      withoutEnlargement: true,
+    }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
+    const key = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${variant.name}.webp`;
+    const url = await put(key, rendered.data, 'image/webp');
+    await db('library_asset_variants').insert({
+      asset_id: assetId,
+      variant: variant.name,
+      storage_key: key,
+      file_url: url,
+      mime_type: 'image/webp',
+      width: rendered.info.width,
+      height: rendered.info.height,
+      size_bytes: rendered.info.size,
+      created_at: new Date(),
+    }).onConflict(['asset_id', 'variant']).ignore();
+    if (variant.name === 'thumb') thumbUrl = url;
+  }
+  if (thumbUrl) await db('library_assets').where({ id: assetId }).update({ preview_url: thumbUrl, updated_at: new Date() });
+  return missing.length;
+}
+
 async function importItem(item) {
   const sourcePath = path.resolve(root, item.source);
   if (!fs.existsSync(sourcePath)) throw new Error(`No existe ${sourcePath}`);
@@ -53,11 +105,12 @@ async function importItem(item) {
   const originalKey = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${path.basename(sourcePath)}`;
   const [existing] = await db('library_assets').where({ storage_key: originalKey }).select('id').limit(1);
   if (existing) {
+    const repairedVariants = await ensurePreviewVariants(existing.id, item, sourcePath, body, mimeType);
     if (targetAccountId && !dryRun) {
       const now = new Date();
       await db('account_library').insert({ account_id: targetAccountId, library_asset_id: existing.id, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();
     }
-    return { id: existing.id, status: 'skipped', bytes: body.length };
+    return { id: existing.id, status: repairedVariants ? (dryRun ? 'ready' : 'repaired') : 'skipped', bytes: body.length };
   }
   const [category] = await db('library_asset_categories').where({ slug: item.category }).select('id').limit(1);
   if (!category) throw new Error(`Categoria no inicializada: ${item.category}`);
@@ -85,15 +138,7 @@ async function importItem(item) {
     updated_at: now,
   });
 
-  if (mimeType.startsWith('image/')) {
-    for (const variant of [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }, { name: 'full', size: 1600 }]) {
-      const rendered = await sharp(body, { animated: false }).rotate().resize({ width: variant.size, height: variant.size, fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
-      const key = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${variant.name}.webp`;
-      const url = await put(key, rendered.data, 'image/webp');
-      await db('library_asset_variants').insert({ asset_id: assetId, variant: variant.name, storage_key: key, file_url: url, mime_type: 'image/webp', width: rendered.info.width, height: rendered.info.height, size_bytes: rendered.info.size, created_at: now });
-      if (variant.name === 'thumb') await db('library_assets').where({ id: assetId }).update({ preview_url: url });
-    }
-  }
+  await ensurePreviewVariants(assetId, item, sourcePath, body, mimeType);
 
   if (targetAccountId) {
     await db('account_library').insert({ account_id: targetAccountId, library_asset_id: assetId, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();
@@ -118,7 +163,7 @@ async function importItem(item) {
       ids.add(item.id);
       sources.add(item.source);
     }
-    const report = { mode: dryRun ? 'dry-run' : 'import', ready: 0, imported: 0, skipped: 0, failed: 0, bytes: 0 };
+    const report = { mode: dryRun ? 'dry-run' : 'import', ready: 0, imported: 0, repaired: 0, skipped: 0, failed: 0, bytes: 0 };
     for (const item of manifest) {
       try {
         const result = await importItem(item);
