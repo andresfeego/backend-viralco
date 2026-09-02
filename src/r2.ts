@@ -13,9 +13,8 @@ export const LIBRARY_PURPOSES = new Set([
   'logo',
   'background',
   'template',
-  'start_screen',
   'animation',
-  'gif_overlay',
+  'sticker',
   'font',
   'branding',
   'other',
@@ -72,12 +71,12 @@ function assertContentTypeForPurpose(purpose: string, contentType: string) {
     if (!FONT_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de fuente no permitido');
     return;
   }
-  if (purpose === 'intro' || purpose === 'outro' || purpose === 'animation' || purpose === 'start_screen') {
+  if (purpose === 'intro' || purpose === 'outro' || purpose === 'animation') {
     if (!IMAGE_TYPES.has(contentType) && !VIDEO_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de archivo no permitido');
     return;
   }
-  if (purpose === 'gif_overlay') {
-    if (!IMAGE_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de overlay no permitido');
+  if (purpose === 'sticker') {
+    if (!['image/png', 'image/gif'].includes(contentType)) throw new ServiceError(400, 'El sticker debe ser PNG o GIF');
     return;
   }
   if (!IMAGE_TYPES.has(contentType)) throw new ServiceError(400, 'Tipo de imagen no permitido');
@@ -90,6 +89,7 @@ export function assertLibraryUploadInput(input: any) {
   const sizeBytes = Number(input?.sizeBytes);
 
   if (!LIBRARY_PURPOSES.has(purpose)) throw new ServiceError(400, 'Proposito de upload invalido');
+  if (purpose === 'template') throw new ServiceError(400, 'Las plantillas de diseno aun no estan disponibles');
   assertContentTypeForPurpose(purpose, contentType);
   const maxBytes = VIDEO_TYPES.has(contentType) ? MAX_VIDEO_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > maxBytes) throw new ServiceError(400, 'Tamano de archivo invalido');
@@ -145,6 +145,12 @@ export async function putR2Object(input: { key: string; body: Buffer; contentTyp
     ContentType: input.contentType,
   }));
   return { key: input.key, fileUrl: r2PublicUrl(input.key) };
+}
+
+export async function getR2ObjectBuffer(key: string) {
+  const result = await r2.send(new GetObjectCommand({ Bucket: requiredEnv('R2_BUCKET_NAME'), Key: key }));
+  if (!result.Body) throw new ServiceError(404, 'Objeto R2 no encontrado');
+  return Buffer.from(await result.Body.transformToByteArray());
 }
 
 export async function createPresignedReadUrl(key: string) {

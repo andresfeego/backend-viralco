@@ -347,6 +347,8 @@ export const libraryAssetsTable = mysqlTable(
     sourceAssetId: bigint('source_asset_id', { mode: 'bigint', unsigned: true }),
     name: varchar('name', { length: 180 }).notNull(),
     type: varchar('type', { length: 32 }).notNull(),
+    motionType: varchar('motion_type', { length: 16 }),
+    appliesToAllEventTypes: boolean('applies_to_all_event_types').notNull().default(true),
     storageKey: varchar('storage_key', { length: 1024 }).notNull(),
     fileUrl: varchar('file_url', { length: 2048 }).notNull(),
     previewUrl: varchar('preview_url', { length: 2048 }),
@@ -363,6 +365,20 @@ export const libraryAssetsTable = mysqlTable(
     uniqueIndex('library_assets_storage_key_uq').on(table.storageKey),
     index('library_assets_owner_idx').on(table.ownerType, table.ownerAccountId),
     index('library_assets_type_idx').on(table.type),
+    index('library_assets_type_motion_idx').on(table.type, table.motionType),
+  ]
+);
+
+export const libraryAssetEventTypesTable = mysqlTable(
+  'library_asset_event_types',
+  {
+    libraryAssetId: bigint('library_asset_id', { mode: 'bigint', unsigned: true }).notNull().references(() => libraryAssetsTable.id, { onDelete: 'cascade' }),
+    eventTypeId: bigint('event_type_id', { mode: 'bigint', unsigned: true }).notNull().references(() => eventTypesTable.id, { onDelete: 'cascade' }),
+    createdAt: datetime('created_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.libraryAssetId, table.eventTypeId], name: 'library_asset_event_types_pk' }),
+    index('library_asset_event_types_event_type_idx').on(table.eventTypeId, table.libraryAssetId),
   ]
 );
 

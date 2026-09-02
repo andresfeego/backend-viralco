@@ -27,6 +27,7 @@ const PLANS = [
 const CATEGORIES = [
   { slug: 'frames', name: 'Frames', description: 'Marcos y plantillas visuales' },
   { slug: 'overlays', name: 'Overlays', description: 'Capas graficas sobre capturas' },
+  { slug: 'stickers', name: 'Stickers', description: 'Elementos decorativos estaticos y animados' },
   { slug: 'branding', name: 'Branding', description: 'Logos, fondos y piezas de marca' },
   { slug: 'music', name: 'Musica', description: 'Recursos de audio' },
   { slug: 'templates', name: 'Templates', description: 'Plantillas reutilizables' },

@@ -248,6 +248,11 @@ function mimeMatchesFamily(mimeType: unknown, family: string) {
   return false;
 }
 
+function assetMatchesExpectedPurpose(asset: any, expectedPurpose: string) {
+  if (asset.type === expectedPurpose) return true;
+  return expectedPurpose === 'gif_overlay' && asset.type === 'sticker' && asset.motionType === 'animated';
+}
+
 async function getMirrorContext(eventIdValue: unknown, eventModeIdValue: unknown, requester: any, permission: string) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   const eventModeId = parseEntityId(eventModeIdValue, 'ID de modo de evento');
@@ -284,7 +289,9 @@ async function validateResources(context: any, config: any) {
     if (!row.resource.isActive || row.asset.status !== 'active') errors.push(issue(`resources.${id}`, 'RESOURCE_INACTIVE', 'El recurso esta inactivo'));
     if (row.asset.ownerType === 'account' && row.asset.ownerAccountId !== context.event.accountId) errors.push(issue(`resources.${id}`, 'RESOURCE_ACCOUNT_MISMATCH', 'El recurso pertenece a otra cuenta'));
     const expected = expectedResource(config, id);
-    if (row.resource.purpose !== expected.purpose || row.asset.type !== expected.purpose) errors.push(issue(`resources.${id}`, 'RESOURCE_PURPOSE_MISMATCH', `El recurso debe tener proposito ${expected.purpose}`));
+    const purposeMatches = row.resource.purpose === expected.purpose
+      || (expected.purpose === 'gif_overlay' && row.resource.purpose === 'sticker');
+    if (!purposeMatches || !assetMatchesExpectedPurpose(row.asset, expected.purpose)) errors.push(issue(`resources.${id}`, 'RESOURCE_PURPOSE_MISMATCH', `El recurso debe tener proposito ${expected.purpose}`));
     if (!mimeMatchesFamily(row.asset.mimeType, expected.family)) errors.push(issue(`resources.${id}`, 'RESOURCE_MIME_MISMATCH', 'El formato del recurso no corresponde a su proposito'));
     if (expected.purpose === 'animation' && !MIRROR_ANIMATION_STAGE_SET.has(String(row.resource.placement || ''))) {
       errors.push(issue(`resources.${id}`, 'ANIMATION_PLACEMENT_INVALID', 'La animacion debe estar asociada a una etapa valida'));

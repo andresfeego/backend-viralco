@@ -4,15 +4,17 @@ import { fileTypeFromBuffer } from 'file-type';
 import heicConvert from 'heic-convert';
 import sharp from 'sharp';
 import { db } from '../db/index.ts';
-import { accountLibraryTable, libraryAssetCategoriesTable, libraryAssetsTable, libraryAssetVariantsTable } from '../db/schema.ts';
+import { accountLibraryTable, eventTypesTable, libraryAssetCategoriesTable, libraryAssetEventTypesTable, libraryAssetsTable, libraryAssetVariantsTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
-import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVariantKey, createPresignedLibraryUpload, createPresignedReadUrl, LIBRARY_PURPOSES, putR2Object, r2PublicUrl } from '../r2.ts';
+import { renderFontPreviewVariants } from '../lib/font-preview.mjs';
+import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVariantKey, createPresignedLibraryUpload, createPresignedReadUrl, getR2ObjectBuffer, LIBRARY_PURPOSES, putR2Object, r2PublicUrl } from '../r2.ts';
 import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
 
 const OWNER_TYPES = new Set(['viralco', 'account']);
-const ASSET_TYPES = new Set(['frame', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'start_screen', 'animation', 'gif_overlay', 'font', 'other']);
+const ASSET_TYPES = new Set(['frame', 'sticker', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'animation', 'font', 'other']);
 const ASSET_STATUSES = new Set(['draft', 'active', 'archived']);
+const STICKER_MOTION_TYPES = new Set(['static', 'animated']);
 const PROCESSABLE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
 const HEIC_TYPES = new Set(['image/heic', 'image/heif']);
 const MAX_PROCESSED_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -49,24 +51,26 @@ async function mapVariants(rows: any[] = []) {
   }, {});
 }
 
-export async function mapLibraryAsset(row: any, category?: any, variants?: any[]) {
+export async function mapLibraryAsset(row: any, category?: any, variants?: any[], eventTypes: any[] = []) {
   if (!row) return null;
   return {
     id: serializeId(row.id), categoryId: serializeId(row.categoryId), category: category ? mapCategory(category) : undefined,
     ownerType: row.ownerType, ownerAccountId: serializeId(row.ownerAccountId), sourceAssetId: serializeId(row.sourceAssetId),
-    name: row.name, type: row.type, storageKey: row.storageKey, fileUrl: row.fileUrl, fileSignedUrl: await createPresignedReadUrl(row.storageKey), previewUrl: row.previewUrl,
+    name: row.name, type: row.type, motionType: row.motionType || null, appliesToAllEventTypes: Boolean(row.appliesToAllEventTypes),
+    eventTypes: eventTypes.map((eventType) => ({ id: serializeId(eventType.id), slug: eventType.slug, name: eventType.name })),
+    storageKey: row.storageKey, fileUrl: row.fileUrl, fileSignedUrl: await createPresignedReadUrl(row.storageKey), previewUrl: row.previewUrl,
     mimeType: row.mimeType, sizeBytes: serializeId(row.sizeBytes), tags: row.tags || null, metadata: row.metadata || null,
     variants: variants === undefined ? undefined : await mapVariants(variants),
     status: row.status, createdBy: serializeId(row.createdBy), createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
 
-async function mapAccountLibrary(row: any, asset: any, category?: any, variants?: any[], accountId?: EntityId) {
+async function mapAccountLibrary(row: any, asset: any, category?: any, variants?: any[], accountId?: EntityId, eventTypes: any[] = []) {
   return {
     id: serializeId(row?.id), accountId: serializeId(row?.accountId || accountId), libraryAssetId: serializeId(row?.libraryAssetId || asset.id),
     displayName: row?.displayName || null, notes: row?.notes || null, isFavorite: Boolean(row?.isFavorite), favoritedAt: row?.favoritedAt || null,
     favoritedBy: serializeId(row?.favoritedBy), addedBy: serializeId(row?.addedBy),
-    asset: await mapLibraryAsset(asset, category, variants), createdAt: row?.createdAt || null, updatedAt: row?.updatedAt || null,
+    asset: await mapLibraryAsset(asset, category, variants, eventTypes), createdAt: row?.createdAt || null, updatedAt: row?.updatedAt || null,
   };
 }
 
@@ -92,6 +96,65 @@ async function findVariants(assetIds: EntityId[]) {
   }, new Map<string, any[]>());
 }
 
+async function findEventTypes(assetIds: EntityId[]) {
+  if (assetIds.length === 0) return new Map<string, any[]>();
+  const rows = await db.select({ libraryAssetId: libraryAssetEventTypesTable.libraryAssetId, eventType: eventTypesTable })
+    .from(libraryAssetEventTypesTable)
+    .innerJoin(eventTypesTable, eq(libraryAssetEventTypesTable.eventTypeId, eventTypesTable.id))
+    .where(inArray(libraryAssetEventTypesTable.libraryAssetId, assetIds))
+    .orderBy(asc(eventTypesTable.sortOrder), asc(eventTypesTable.name));
+  return rows.reduce((acc, row) => {
+    const key = serializeId(row.libraryAssetId)!;
+    if (!acc.has(key)) acc.set(key, []);
+    acc.get(key)!.push(row.eventType);
+    return acc;
+  }, new Map<string, any[]>());
+}
+
+async function normalizeEventTypeScope(input: any) {
+  const rawUniversal = input?.appliesToAllEventTypes;
+  const appliesToAllEventTypes = rawUniversal === undefined
+    ? true
+    : rawUniversal === true || String(rawUniversal).trim().toLowerCase() === 'true';
+  let eventTypeInput = input?.eventTypeIds;
+  if (typeof eventTypeInput === 'string') {
+    try { eventTypeInput = JSON.parse(eventTypeInput); }
+    catch { eventTypeInput = eventTypeInput.split(','); }
+  }
+  const rawIds = Array.isArray(eventTypeInput) ? [...new Set(eventTypeInput.map(String).filter(Boolean))] : [];
+  if (appliesToAllEventTypes) return { appliesToAllEventTypes: true, eventTypeIds: [] as EntityId[] };
+  if (!rawIds.length) throw new ServiceError(400, 'Selecciona al menos un tipo de evento');
+  const eventTypeIds = rawIds.map((id) => parseEntityId(id, 'ID de tipo de evento'));
+  const rows = await db.select({ id: eventTypesTable.id }).from(eventTypesTable)
+    .where(and(inArray(eventTypesTable.id, eventTypeIds), eq(eventTypesTable.isActive, true)));
+  if (rows.length !== eventTypeIds.length) throw new ServiceError(400, 'Tipo de evento invalido');
+  return { appliesToAllEventTypes: false, eventTypeIds };
+}
+
+function normalizeMotionType(type: string, mimeType: string, inputMotionType?: unknown) {
+  const motionType = String(inputMotionType || '').trim().toLowerCase();
+  if (type !== 'sticker') {
+    if (motionType) throw new ServiceError(400, 'motionType solo aplica a stickers');
+    return null;
+  }
+  const inferred = mimeType.toLowerCase() === 'image/gif' ? 'animated' : 'static';
+  const normalized = motionType || inferred;
+  if (!STICKER_MOTION_TYPES.has(normalized)) throw new ServiceError(400, 'Movimiento de sticker invalido');
+  if (normalized === 'animated' && mimeType.toLowerCase() !== 'image/gif') throw new ServiceError(400, 'El sticker con movimiento debe ser GIF');
+  if (normalized === 'static' && mimeType && mimeType.toLowerCase() !== 'image/png') throw new ServiceError(400, 'El sticker sin movimiento debe ser PNG');
+  return normalized;
+}
+
+async function replaceAssetEventTypes(assetId: EntityId, eventTypeIds: EntityId[], tx: any = db) {
+  await tx.delete(libraryAssetEventTypesTable).where(eq(libraryAssetEventTypesTable.libraryAssetId, assetId));
+  if (!eventTypeIds.length) return;
+  await tx.insert(libraryAssetEventTypesTable).values(eventTypeIds.map((eventTypeId) => ({
+    libraryAssetId: assetId,
+    eventTypeId,
+    createdAt: new Date(),
+  })));
+}
+
 export async function getLibraryAssetWithVariants(assetId: EntityId | null) {
   if (!assetId) return null;
   const [row] = await db.select({ asset: libraryAssetsTable, category: libraryAssetCategoriesTable })
@@ -101,7 +164,8 @@ export async function getLibraryAssetWithVariants(assetId: EntityId | null) {
     .limit(1);
   if (!row) return null;
   const variantsByAssetId = await findVariants([assetId]);
-  return mapLibraryAsset(row.asset, row.category, variantsByAssetId.get(serializeId(assetId)!) || []);
+  const eventTypesByAssetId = await findEventTypes([assetId]);
+  return mapLibraryAsset(row.asset, row.category, variantsByAssetId.get(serializeId(assetId)!) || [], eventTypesByAssetId.get(serializeId(assetId)!) || []);
 }
 
 export async function prepareGlobalLibraryUpload(input: any, requester: any) {
@@ -123,26 +187,72 @@ export async function createLibraryAsset(input: any, requester: any, owner: { ow
   const name = String(input?.name || '').trim();
   const type = String(input?.type || input?.purpose || '').trim();
   const status = String(input?.status || 'active').trim();
+  const mimeType = String(input?.mimeType || input?.contentType || '').trim().toLowerCase();
   const storageKey = assertLibraryKeyScope({ key: input?.key || input?.storageKey, ownerType: owner.ownerType, accountId: owner.accountId ? serializeId(owner.accountId)! : undefined });
   if (!name) throw new ServiceError(400, 'Nombre de recurso requerido');
   if (!ASSET_TYPES.has(type)) throw new ServiceError(400, 'Tipo de recurso invalido');
+  if (type === 'template') throw new ServiceError(400, 'Las plantillas de diseno aun no estan disponibles');
   if (!ASSET_STATUSES.has(status)) throw new ServiceError(400, 'Estado de recurso invalido');
+  const motionType = normalizeMotionType(type, mimeType, input?.motionType);
+  const eventTypeScope = await normalizeEventTypeScope(input);
+  const fontPreview = type === 'font' ? await renderFontPreviewVariants(await getR2ObjectBuffer(storageKey)) : null;
+  const metadata = {
+    ...(input?.metadata && typeof input.metadata === 'object' ? input.metadata : {}),
+    ...(fontPreview?.metadata || {}),
+  };
   const now = new Date();
-  const result = await db.insert(libraryAssetsTable).values({
-    categoryId: input?.categoryId ? parseEntityId(input.categoryId, 'ID de categoria') : null,
-    ownerType: owner.ownerType,
-    ownerAccountId: owner.ownerType === 'account' ? owner.accountId! : null,
-    sourceAssetId: input?.sourceAssetId ? parseEntityId(input.sourceAssetId, 'ID de recurso origen') : null,
-    name, type, storageKey, fileUrl: input?.fileUrl || input?.url || '', previewUrl: input?.previewUrl || null,
-    mimeType: input?.mimeType || input?.contentType || null,
-    sizeBytes: input?.sizeBytes ? BigInt(input.sizeBytes) : null,
-    tags: Array.isArray(input?.tags) ? input.tags : null,
-    metadata: input?.metadata && typeof input.metadata === 'object' ? input.metadata : null,
-    status, createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now,
+  const assetId = await db.transaction(async (tx) => {
+    const result = await tx.insert(libraryAssetsTable).values({
+      categoryId: input?.categoryId ? parseEntityId(input.categoryId, 'ID de categoria') : null,
+      ownerType: owner.ownerType,
+      ownerAccountId: owner.ownerType === 'account' ? owner.accountId! : null,
+      sourceAssetId: input?.sourceAssetId ? parseEntityId(input.sourceAssetId, 'ID de recurso origen') : null,
+      name, type, motionType, appliesToAllEventTypes: eventTypeScope.appliesToAllEventTypes,
+      storageKey, fileUrl: input?.fileUrl || input?.url || '', previewUrl: input?.previewUrl || null,
+      mimeType: mimeType || null,
+      sizeBytes: input?.sizeBytes ? BigInt(input.sizeBytes) : null,
+      tags: Array.isArray(input?.tags) ? input.tags : null,
+      metadata: Object.keys(metadata).length ? metadata : null,
+      status, createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now,
+    });
+    const id = BigInt(result[0]?.insertId || 0);
+    await replaceAssetEventTypes(id, eventTypeScope.eventTypeIds, tx);
+    return id;
   });
-  const assetId = BigInt(result[0]?.insertId || 0);
+  if (fontPreview) {
+    try {
+      const savedVariants = await Promise.all(fontPreview.variants.map(async (variant: any) => {
+        const key = buildLibraryAssetVariantKey({
+          scope: owner.ownerType === 'viralco' ? 'viralco' : 'account',
+          accountId: owner.accountId ? serializeId(owner.accountId)! : undefined,
+          purpose: 'font',
+          assetId: serializeId(assetId)!,
+          variant: variant.variant,
+        });
+        const saved = await putR2Object({ key, body: variant.buffer, contentType: 'image/webp' });
+        return { ...variant, ...saved };
+      }));
+      await db.insert(libraryAssetVariantsTable).values(savedVariants.map((variant) => ({
+        assetId,
+        variant: variant.variant,
+        storageKey: variant.key,
+        fileUrl: variant.fileUrl,
+        mimeType: 'image/webp',
+        width: variant.width,
+        height: variant.height,
+        sizeBytes: BigInt(variant.sizeBytes),
+        createdAt: now,
+      })));
+      const thumb = savedVariants.find((variant) => variant.variant === 'thumb');
+      if (thumb) await db.update(libraryAssetsTable).set({ previewUrl: thumb.fileUrl, updatedAt: new Date() }).where(eq(libraryAssetsTable.id, assetId));
+    } catch (error) {
+      await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, assetId));
+      throw new ServiceError(400, error instanceof Error ? error.message : 'No se pudo procesar la fuente');
+    }
+  }
   const asset = await findAsset(assetId);
-  return mapLibraryAsset(asset, await findCategory(asset.categoryId), []);
+  const eventTypesByAssetId = await findEventTypes([assetId]);
+  return mapLibraryAsset(asset, await findCategory(asset.categoryId), [], eventTypesByAssetId.get(serializeId(assetId)!) || []);
 }
 
 function fallbackMimeFromName(fileName: string, mimeType?: string) {
@@ -178,6 +288,7 @@ async function assertProcessedImageInput(input: any, file: any) {
   const name = String(input?.name || file?.originalname || '').trim() || 'imagen';
   if (!LIBRARY_PURPOSES.has(purpose)) throw new ServiceError(400, 'Proposito de upload invalido');
   if (!ASSET_TYPES.has(purpose)) throw new ServiceError(400, 'Tipo de recurso invalido');
+  if (purpose === 'template') throw new ServiceError(400, 'Las plantillas de diseno aun no estan disponibles');
   if (!file?.buffer || !Buffer.isBuffer(file.buffer)) throw new ServiceError(400, 'Archivo requerido');
   if (file.size <= 0 || file.size > MAX_PROCESSED_IMAGE_BYTES) throw new ServiceError(400, 'Tamano de archivo invalido');
 
@@ -191,6 +302,8 @@ export async function createProcessedLibraryImageAsset(input: any, file: any, re
   if (owner.ownerType === 'viralco' && !isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
   if (owner.ownerType === 'account') await assertAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
   const upload = await assertProcessedImageInput(input, file);
+  const eventTypeScope = await normalizeEventTypeScope(input);
+  const motionType = normalizeMotionType(upload.purpose, upload.originalMimeType, input?.motionType);
   const scope = owner.ownerType === 'viralco' ? 'viralco' : 'account';
   const now = new Date();
   const tempKey = `${scope === 'viralco' ? 'viralco' : `accounts/${serializeId(owner.accountId!)}`}/library/${upload.purpose}/pending/${randomUUID()}.webp`;
@@ -201,6 +314,8 @@ export async function createProcessedLibraryImageAsset(input: any, file: any, re
     sourceAssetId: input?.sourceAssetId ? parseEntityId(input.sourceAssetId, 'ID de recurso origen') : null,
     name: upload.name,
     type: upload.purpose,
+    motionType,
+    appliesToAllEventTypes: eventTypeScope.appliesToAllEventTypes,
     storageKey: tempKey,
     fileUrl: r2PublicUrl(tempKey),
     previewUrl: null,
@@ -216,6 +331,7 @@ export async function createProcessedLibraryImageAsset(input: any, file: any, re
   const assetId = BigInt(result[0]?.insertId || 0);
 
   try {
+    await replaceAssetEventTypes(assetId, eventTypeScope.eventTypeIds);
     const normalizedInput = await normalizeImageInput(file.buffer, upload.originalMimeType);
     const renderedVariants = await Promise.all(IMAGE_VARIANTS.map(async (variantConfig) => {
       const rendered = await renderImageVariant(normalizedInput, variantConfig.size, variantConfig.quality);
@@ -254,6 +370,7 @@ export async function createProcessedLibraryImageAsset(input: any, file: any, re
       updatedAt: new Date(),
     }).where(eq(libraryAssetsTable.id, assetId));
   } catch (error) {
+    await db.delete(libraryAssetEventTypesTable).where(eq(libraryAssetEventTypesTable.libraryAssetId, assetId));
     await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, assetId));
     throw error instanceof ServiceError ? error : new ServiceError(400, error instanceof Error ? error.message : 'No se pudo procesar imagen');
   }
@@ -272,7 +389,13 @@ export async function listLibraryAssets(query: any, requester: any) {
     .where(accountId ? or(eq(libraryAssetsTable.ownerType, 'viralco'), and(eq(libraryAssetsTable.ownerType, 'account'), eq(libraryAssetsTable.ownerAccountId, accountId))) : undefined as any)
     .orderBy(asc(libraryAssetsTable.ownerType), asc(libraryAssetsTable.type), asc(libraryAssetsTable.name));
   const variantsByAssetId = await findVariants(rows.map((row) => row.asset.id));
-  return Promise.all(rows.map((row) => mapLibraryAsset(row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
+  const eventTypesByAssetId = await findEventTypes(rows.map((row) => row.asset.id));
+  return Promise.all(rows.map((row) => mapLibraryAsset(
+    row.asset,
+    row.category,
+    variantsByAssetId.get(serializeId(row.asset.id)!) || [],
+    eventTypesByAssetId.get(serializeId(row.asset.id)!) || [],
+  )));
 }
 
 export async function listAccountLibrary(accountIdValue: unknown, requester: any, query: any = {}) {
@@ -294,9 +417,27 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
     if (String(query?.favorite || '') === 'true') conditions.push(eq(accountLibraryTable.isFavorite, true));
     if (String(query?.favorite || '') === 'false') conditions.push(or(isNull(accountLibraryTable.id), eq(accountLibraryTable.isFavorite, false))!);
     const type = String(query?.type || '').trim();
+    const motion = String(query?.motion || '').trim().toLowerCase();
+    const eventType = String(query?.eventType || '').trim().toLowerCase();
     const category = String(query?.category || '').trim();
     const search = String(query?.q || '').trim();
     if (type) conditions.push(eq(libraryAssetsTable.type, type));
+    if (motion) {
+      if (!STICKER_MOTION_TYPES.has(motion)) throw new ServiceError(400, 'Movimiento de sticker invalido');
+      conditions.push(eq(libraryAssetsTable.type, 'sticker'), eq(libraryAssetsTable.motionType, motion));
+    }
+    if (eventType) {
+      conditions.push(or(
+        eq(libraryAssetsTable.appliesToAllEventTypes, true),
+        sql`exists (
+          select 1 from ${libraryAssetEventTypesTable}
+          inner join ${eventTypesTable} on ${eventTypesTable.id} = ${libraryAssetEventTypesTable.eventTypeId}
+          where ${libraryAssetEventTypesTable.libraryAssetId} = ${libraryAssetsTable.id}
+            and ${eventTypesTable.slug} = ${eventType}
+            and ${eventTypesTable.isActive} = true
+        )`,
+      )!);
+    }
     if (category) conditions.push(eq(libraryAssetCategoriesTable.slug, category));
     if (search) conditions.push(or(like(libraryAssetsTable.name, `%${search}%`), like(accountLibraryTable.displayName, `%${search}%`))!);
     const joinAccountEntry = and(
@@ -318,12 +459,14 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
       .leftJoin(libraryAssetCategoriesTable, eq(libraryAssetsTable.categoryId, libraryAssetCategoriesTable.id))
       .where(where);
     const variantsByAssetId = await findVariants(rows.map((row) => row.asset.id));
+    const eventTypesByAssetId = await findEventTypes(rows.map((row) => row.asset.id));
     const library = await Promise.all(rows.map((row) => mapAccountLibrary(
       row.entry,
       row.asset,
       row.category,
       variantsByAssetId.get(serializeId(row.asset.id)!) || [],
       accountId,
+      eventTypesByAssetId.get(serializeId(row.asset.id)!) || [],
     )));
     const total = Number(countRow?.count || 0);
     return { library, pagination: { page, pageSize, total, pageCount: Math.ceil(total / pageSize) } };
@@ -333,9 +476,27 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
   if (String(query?.favorite || '') === 'true') conditions.push(eq(accountLibraryTable.isFavorite, true));
   if (String(query?.favorite || '') === 'false') conditions.push(eq(accountLibraryTable.isFavorite, false));
   const type = String(query?.type || '').trim();
+  const motion = String(query?.motion || '').trim().toLowerCase();
+  const eventType = String(query?.eventType || '').trim().toLowerCase();
   const category = String(query?.category || '').trim();
   const search = String(query?.q || '').trim();
   if (type) conditions.push(eq(libraryAssetsTable.type, type));
+  if (motion) {
+    if (!STICKER_MOTION_TYPES.has(motion)) throw new ServiceError(400, 'Movimiento de sticker invalido');
+    conditions.push(eq(libraryAssetsTable.type, 'sticker'), eq(libraryAssetsTable.motionType, motion));
+  }
+  if (eventType) {
+    conditions.push(or(
+      eq(libraryAssetsTable.appliesToAllEventTypes, true),
+      sql`exists (
+        select 1 from ${libraryAssetEventTypesTable}
+        inner join ${eventTypesTable} on ${eventTypesTable.id} = ${libraryAssetEventTypesTable.eventTypeId}
+        where ${libraryAssetEventTypesTable.libraryAssetId} = ${libraryAssetsTable.id}
+          and ${eventTypesTable.slug} = ${eventType}
+          and ${eventTypesTable.isActive} = true
+      )`,
+    )!);
+  }
   if (category) conditions.push(eq(libraryAssetCategoriesTable.slug, category));
   if (search) conditions.push(or(like(libraryAssetsTable.name, `%${search}%`), like(accountLibraryTable.displayName, `%${search}%`))!);
   const where = and(...conditions);
@@ -353,7 +514,15 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
     .leftJoin(libraryAssetCategoriesTable, eq(libraryAssetsTable.categoryId, libraryAssetCategoriesTable.id))
     .where(where);
   const variantsByAssetId = await findVariants(rows.map((row) => row.asset.id));
-  const library = await Promise.all(rows.map((row) => mapAccountLibrary(row.entry, row.asset, row.category, variantsByAssetId.get(serializeId(row.asset.id)!) || [])));
+  const eventTypesByAssetId = await findEventTypes(rows.map((row) => row.asset.id));
+  const library = await Promise.all(rows.map((row) => mapAccountLibrary(
+    row.entry,
+    row.asset,
+    row.category,
+    variantsByAssetId.get(serializeId(row.asset.id)!) || [],
+    undefined,
+    eventTypesByAssetId.get(serializeId(row.asset.id)!) || [],
+  )));
   const total = Number(countRow?.count || 0);
   return { library, pagination: { page, pageSize, total, pageCount: Math.ceil(total / pageSize) } };
 }
@@ -400,7 +569,8 @@ export async function setAccountLibraryFavorite(accountIdValue: unknown, assetId
   }
   const category = await findCategory(asset.categoryId);
   const variantsByAssetId = await findVariants([libraryAssetId]);
-  return mapAccountLibrary(entry, asset, category, variantsByAssetId.get(serializeId(libraryAssetId)!) || [], accountId);
+  const eventTypesByAssetId = await findEventTypes([libraryAssetId]);
+  return mapAccountLibrary(entry, asset, category, variantsByAssetId.get(serializeId(libraryAssetId)!) || [], accountId, eventTypesByAssetId.get(serializeId(libraryAssetId)!) || []);
 }
 
 export async function cloneAssetForAccount(accountIdValue: unknown, assetIdValue: unknown, input: any, requester: any) {
@@ -414,18 +584,27 @@ export async function cloneAssetForAccount(accountIdValue: unknown, assetIdValue
   const fileUrl = String(input?.fileUrl || input?.url || '').trim();
   if (!fileUrl) throw new ServiceError(400, 'fileUrl requerido para clonar recurso personalizado');
   const now = new Date();
-  const result = await db.insert(libraryAssetsTable).values({
-    categoryId: source.categoryId, ownerType: 'account', ownerAccountId: accountId, sourceAssetId: source.id,
-    name: String(input?.name || '').trim() || source.name, type: source.type,
-    storageKey, fileUrl, previewUrl: input?.previewUrl || source.previewUrl, mimeType: input?.mimeType || source.mimeType,
-    sizeBytes: input?.sizeBytes ? BigInt(input.sizeBytes) : source.sizeBytes, tags: source.tags,
-    metadata: { ...(source.metadata || {}), ...(input?.metadata || {}), cloned: true }, status: 'active',
-    createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now,
+  const sourceEventTypes = await db.select({ eventTypeId: libraryAssetEventTypesTable.eventTypeId })
+    .from(libraryAssetEventTypesTable)
+    .where(eq(libraryAssetEventTypesTable.libraryAssetId, source.id));
+  const clonedId = await db.transaction(async (tx) => {
+    const result = await tx.insert(libraryAssetsTable).values({
+      categoryId: source.categoryId, ownerType: 'account', ownerAccountId: accountId, sourceAssetId: source.id,
+      name: String(input?.name || '').trim() || source.name, type: source.type, motionType: source.motionType,
+      appliesToAllEventTypes: source.appliesToAllEventTypes,
+      storageKey, fileUrl, previewUrl: input?.previewUrl || source.previewUrl, mimeType: input?.mimeType || source.mimeType,
+      sizeBytes: input?.sizeBytes ? BigInt(input.sizeBytes) : source.sizeBytes, tags: source.tags,
+      metadata: { ...(source.metadata || {}), ...(input?.metadata || {}), cloned: true }, status: 'active',
+      createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now,
+    });
+    const id = BigInt(result[0]?.insertId || 0);
+    await replaceAssetEventTypes(id, sourceEventTypes.map((row) => row.eventTypeId), tx);
+    return id;
   });
-  const clonedId = BigInt(result[0]?.insertId || 0);
   await addAssetToAccountLibrary(accountId, { libraryAssetId: serializeId(clonedId), displayName: input?.displayName || source.name }, requester);
   const cloned = await findAsset(clonedId);
-  return mapLibraryAsset(cloned, await findCategory(cloned.categoryId));
+  const eventTypesByAssetId = await findEventTypes([clonedId]);
+  return mapLibraryAsset(cloned, await findCategory(cloned.categoryId), undefined, eventTypesByAssetId.get(serializeId(clonedId)!) || []);
 }
 
 export async function assertAssetAvailableForEventAccount(assetId: EntityId, accountId: EntityId) {

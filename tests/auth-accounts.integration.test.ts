@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { app } from '../src/server.ts';
 import { db } from '../src/db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, libraryAssetEventTypesTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
 import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
 
@@ -26,6 +26,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     await db.delete(eventsTable);
     await db.delete(accountLibraryTable);
     await db.delete(libraryAssetVariantsTable);
+    await db.delete(libraryAssetEventTypesTable);
     await db.delete(libraryAssetsTable);
     await db.delete(subscriptionModesTable);
     await db.delete(subscriptionsTable);
@@ -195,6 +196,16 @@ run('auth, accounts, subscriptions and events integration', () => {
       mimeType: 'image/png', sizeBytes: 100n, tags: null, metadata: null,
       status: 'archived', createdBy: BigInt(superLogin.body.user.id), createdAt: now, updatedAt: now,
     });
+    const [weddingType] = await db.select({ id: eventTypesTable.id }).from(eventTypesTable).where(eq(eventTypesTable.slug, 'boda')).limit(1);
+    const stickerInsert = await db.insert(libraryAssetsTable).values({
+      ownerType: 'viralco', ownerAccountId: null, sourceAssetId: null,
+      name: 'Sticker Boda', type: 'sticker', motionType: 'animated', appliesToAllEventTypes: false,
+      storageKey: 'viralco/library/test/sticker-boda.gif', fileUrl: 'https://assets.test/sticker-boda.gif', previewUrl: null,
+      mimeType: 'image/gif', sizeBytes: 100n, tags: null, metadata: { mirrorCompatible: true },
+      status: 'active', createdBy: BigInt(superLogin.body.user.id), createdAt: now, updatedAt: now,
+    });
+    const stickerAssetId = BigInt(stickerInsert[0].insertId);
+    await db.insert(libraryAssetEventTypesTable).values({ libraryAssetId: stickerAssetId, eventTypeId: weddingType.id, createdAt: now });
 
     const linkedBefore = await request(app).get(`/api/accounts/${accountId}/library`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
@@ -207,6 +218,21 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(global.body.library).toHaveLength(1);
     expect(global.body.library[0]).toMatchObject({ id: null, libraryAssetId: globalAssetId, isFavorite: false });
     expect(global.body.pagination.total).toBe(1);
+
+    const weddingStickers = await request(app).get(`/api/accounts/${accountId}/library?scope=global&type=sticker&motion=animated&eventType=boda`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(weddingStickers.status).toBe(200);
+    expect(weddingStickers.body.library).toHaveLength(1);
+    expect(weddingStickers.body.library[0].asset).toMatchObject({
+      type: 'sticker', motionType: 'animated', appliesToAllEventTypes: false,
+    });
+    expect(weddingStickers.body.library[0].asset.eventTypes).toEqual([
+      expect.objectContaining({ slug: 'boda' }),
+    ]);
+    const corporateStickers = await request(app).get(`/api/accounts/${accountId}/library?scope=global&type=sticker&eventType=corporativo`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(corporateStickers.status).toBe(200);
+    expect(corporateStickers.body.library).toHaveLength(0);
 
     const favorite = await request(app).patch(`/api/accounts/${accountId}/library/${globalAssetId}/favorite`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
@@ -236,6 +262,8 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(invalidScope.status).toBe(400);
 
     await db.delete(accountLibraryTable).where(eq(accountLibraryTable.libraryAssetId, BigInt(globalAssetId)));
+    await db.delete(libraryAssetEventTypesTable).where(eq(libraryAssetEventTypesTable.libraryAssetId, stickerAssetId));
+    await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, stickerAssetId));
     await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, BigInt(globalAssetId)));
     await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, BigInt(archivedInsert[0].insertId)));
   });
@@ -249,24 +277,24 @@ run('auth, accounts, subscriptions and events integration', () => {
 
     const invalidMime = await request(app).post(`/api/accounts/${accountId}/library/uploads`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ purpose: 'template', fileName: 'overlay.pdf', contentType: 'application/pdf', sizeBytes: 100 });
+      .send({ purpose: 'template', fileName: 'overlay.png', contentType: 'image/png', sizeBytes: 100 });
     expect(invalidMime.status).toBe(400);
 
     const prepared = await request(app).post(`/api/accounts/${accountId}/library/uploads`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ purpose: 'template', fileName: 'overlay.png', contentType: 'image/png', sizeBytes: 100 });
+      .send({ purpose: 'frame', fileName: 'marco.png', contentType: 'image/png', sizeBytes: 100 });
     expect(prepared.status).toBe(200);
-    expect(prepared.body.key).toContain(`accounts/${accountId}/library/template/`);
+    expect(prepared.body.key).toContain(`accounts/${accountId}/library/frame/`);
 
     const asset = await request(app).post(`/api/accounts/${accountId}/library/assets`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ name: 'Plantilla Cuenta', type: 'template', key: prepared.body.key, fileUrl: prepared.body.fileUrl, mimeType: 'image/png', sizeBytes: 100 });
+      .send({ name: 'Marco Cuenta', type: 'frame', key: prepared.body.key, fileUrl: prepared.body.fileUrl, mimeType: 'image/png', sizeBytes: 100 });
     expect(asset.status).toBe(201);
     expect(asset.body.asset.ownerType).toBe('account');
 
     const resource = await request(app).post(`/api/events/${event.body.event.id}/resources`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ libraryAssetId: asset.body.asset.id, eventModeId: event.body.event.modes[0].id, purpose: 'template', orderIndex: 0 });
+      .send({ libraryAssetId: asset.body.asset.id, eventModeId: event.body.event.modes[0].id, purpose: 'frame', orderIndex: 0 });
     expect(resource.status).toBe(201);
     expect(resource.body.resource.asset.fileUrl).toBe(prepared.body.fileUrl);
 
@@ -276,7 +304,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(favorite.status).toBe(200);
     expect(favorite.body.library.isFavorite).toBe(true);
 
-    const favorites = await request(app).get(`/api/accounts/${accountId}/library?favorite=true&type=template&q=Plantilla&page=1&pageSize=10`)
+    const favorites = await request(app).get(`/api/accounts/${accountId}/library?favorite=true&type=frame&q=Marco&page=1&pageSize=10`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(favorites.status).toBe(200);
     expect(favorites.body.library).toHaveLength(1);
@@ -286,11 +314,11 @@ run('auth, accounts, subscriptions and events integration', () => {
     const draft = await request(app).get(configPath).set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(draft.status).toBe(200);
     expect(draft.body.config.revision).toBe(0);
-    draft.body.config.config.resources.templateResourceId = resource.body.resource.id;
+    draft.body.config.config.resources.frameResourceId = resource.body.resource.id;
 
     const invalidPurposeConfig = structuredClone(draft.body.config.config);
-    invalidPurposeConfig.resources.templateResourceId = null;
-    invalidPurposeConfig.resources.frameResourceId = resource.body.resource.id;
+    invalidPurposeConfig.resources.frameResourceId = null;
+    invalidPurposeConfig.resources.templateResourceId = resource.body.resource.id;
     const invalidPurpose = await request(app).post(`${configPath}/validate`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ config: invalidPurposeConfig, publish: true });

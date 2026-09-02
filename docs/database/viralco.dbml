@@ -397,7 +397,9 @@ Table library_assets {
   owner_account_id bigint [ref: > accounts.id]
   source_asset_id bigint [ref: > library_assets.id]
   name varchar(180) [not null]
-  type varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | start_screen | animation | gif_overlay | font | other']
+  type varchar(32) [not null, note: 'background | frame | sticker | template reservado | animation | font; tipos historicos conservados solo para lectura']
+  motion_type varchar(16) [note: 'static | animated; solo aplica a sticker']
+  applies_to_all_event_types boolean [not null, default: true]
   storage_key varchar(1024) [not null, unique]
   file_url varchar(2048) [not null]
   preview_url varchar(2048)
@@ -410,6 +412,17 @@ Table library_assets {
   created_at datetime [not null]
   updated_at datetime [not null]
   Note: 'Tabla unica de recursos. owner_type=viralco para biblioteca global; owner_type=account para clones/recursos propios de cuenta.'
+}
+
+Table library_asset_event_types {
+  library_asset_id bigint [not null, ref: > library_assets.id]
+  event_type_id bigint [not null, ref: > event_types.id]
+  created_at datetime [not null]
+  indexes {
+    (library_asset_id, event_type_id) [pk]
+    (event_type_id, library_asset_id)
+  }
+  Note: 'Clasificacion multievento para recursos no universales. Es un filtro de descubrimiento y no restringe la asignacion al configurador.'
 }
 
 Table library_asset_variants {
@@ -451,7 +464,7 @@ Table event_resources {
   event_id bigint [not null, ref: > events.id]
   library_asset_id bigint [not null, ref: > library_assets.id]
   event_mode_id bigint [ref: > event_modes.id]
-  purpose varchar(32) [not null, note: 'frame | overlay | intro | outro | music | logo | background | template | start_screen | animation | gif_overlay | font | branding | other']
+  purpose varchar(32) [not null, note: 'frame | sticker | animation | font | background | template; valores historicos admitidos para publicaciones existentes']
   placement varchar(32)
   config json
   order_index int [not null, default: 0]
