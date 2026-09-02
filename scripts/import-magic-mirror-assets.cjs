@@ -25,8 +25,25 @@ const mimeFor = (file) => {
   if (ext === '.webp') return 'image/webp';
   if (ext === '.gif') return 'image/gif';
   if (ext === '.mp4') return 'video/mp4';
+  if (ext === '.ttf') return 'font/ttf';
   throw new Error(`Formato no soportado: ${file}`);
 };
+
+async function download(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`No se pudo descargar ${url}: ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function sourceFor(item) {
+  if (item.sourceUrl) {
+    const body = await download(item.sourceUrl);
+    return { body, sourcePath: null, fileName: item.fileName || path.basename(new URL(item.sourceUrl).pathname) };
+  }
+  const sourcePath = path.resolve(root, item.source);
+  if (!fs.existsSync(sourcePath)) throw new Error(`No existe ${sourcePath}`);
+  return { body: fs.readFileSync(sourcePath), sourcePath, fileName: path.basename(sourcePath) };
+}
 
 const root = required('MAGIC_MIRROR_ASSET_ROOT');
 const createdBy = required('MAGIC_MIRROR_CREATED_BY');
@@ -58,25 +75,33 @@ function videoPoster(sourcePath) {
   throw new Error(`No se pudo generar poster de ${sourcePath}`);
 }
 
-async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType) {
+async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, preparedFontPreview = null) {
   const configs = mimeType.startsWith('video/')
     ? [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }]
-    : [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }, { name: 'full', size: 1600 }];
+    : mimeType.startsWith('font/')
+      ? [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }]
+      : [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }, { name: 'full', size: 1600 }];
   const existing = await db('library_asset_variants').where({ asset_id: assetId }).select('variant', 'file_url');
   const existingByName = new Map(existing.map((variant) => [variant.variant, variant]));
   const missing = configs.filter((variant) => !existingByName.has(variant.name));
   if (!missing.length) return 0;
   if (dryRun) return missing.length;
 
+  const fontPreview = mimeType.startsWith('font/')
+    ? preparedFontPreview || await (await import('../src/lib/font-preview.mjs')).renderFontPreviewVariants(body)
+    : null;
   const previewInput = mimeType.startsWith('video/') ? videoPoster(sourcePath) : body;
   let thumbUrl = existingByName.get('thumb')?.file_url || null;
   for (const variant of missing) {
-    const rendered = await sharp(previewInput, { animated: false }).rotate().resize({
-      width: variant.size,
-      height: variant.size,
-      fit: 'inside',
-      withoutEnlargement: true,
-    }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
+    const preparedVariant = fontPreview?.variants.find((entry) => entry.variant === variant.name);
+    const rendered = preparedVariant
+      ? { data: preparedVariant.buffer, info: { width: preparedVariant.width, height: preparedVariant.height, size: preparedVariant.sizeBytes } }
+      : await sharp(previewInput, { animated: false }).rotate().resize({
+        width: variant.size,
+        height: variant.size,
+        fit: 'inside',
+        withoutEnlargement: true,
+      }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
     const key = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${variant.name}.webp`;
     const url = await put(key, rendered.data, 'image/webp');
     await db('library_asset_variants').insert({
@@ -96,28 +121,77 @@ async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType) 
   return missing.length;
 }
 
+async function syncEventTypes(assetId, eventTypeSlugs = []) {
+  if (dryRun) return;
+  await db('library_asset_event_types').where({ library_asset_id: assetId }).delete();
+  if (!eventTypeSlugs.length) {
+    await db('library_assets').where({ id: assetId }).update({ applies_to_all_event_types: true });
+    return;
+  }
+  const eventTypes = await db('event_types').whereIn('slug', eventTypeSlugs).where({ is_active: true }).select('id', 'slug');
+  if (eventTypes.length !== eventTypeSlugs.length) throw new Error(`Tipo de evento invalido para ${assetId}`);
+  await db('library_assets').where({ id: assetId }).update({ applies_to_all_event_types: false });
+  await db('library_asset_event_types').insert(eventTypes.map((eventType) => ({
+    library_asset_id: assetId,
+    event_type_id: eventType.id,
+    created_at: new Date(),
+  }))).onConflict(['library_asset_id', 'event_type_id']).ignore();
+}
+
 async function importItem(item) {
-  const sourcePath = path.resolve(root, item.source);
-  if (!fs.existsSync(sourcePath)) throw new Error(`No existe ${sourcePath}`);
-  const body = fs.readFileSync(sourcePath);
-  const mimeType = mimeFor(sourcePath);
+  const { body, sourcePath, fileName } = await sourceFor(item);
+  const mimeType = mimeFor(fileName);
   const digest = crypto.createHash('sha256').update(body).digest('hex');
-  const originalKey = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${path.basename(sourcePath)}`;
-  const [existing] = await db('library_assets').where({ storage_key: originalKey }).select('id').limit(1);
+  if (item.sha256 && item.sha256 !== digest) throw new Error(`SHA-256 invalido para ${item.id}`);
+  const originalKey = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${fileName}`;
+  const [category] = await db('library_asset_categories').where({ slug: item.category }).select('id').limit(1);
+  if (!category) throw new Error(`Categoria no inicializada: ${item.category}`);
+  const [existing] = await db('library_assets')
+    .whereRaw("JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.manifestId')) = ?", [item.id])
+    .orWhere({ storage_key: originalKey })
+    .select('id', 'metadata')
+    .limit(1);
+  const fontPreview = mimeType.startsWith('font/')
+    ? await (await import('../src/lib/font-preview.mjs')).renderFontPreviewVariants(body)
+    : null;
+  let licenseStorageKey = null;
+  if (item.licenseUrl && !dryRun) {
+    const licenseBody = await download(item.licenseUrl);
+    licenseStorageKey = `viralco/library/magic-mirror/${item.purpose}/${item.id}/OFL.txt`;
+    await put(licenseStorageKey, licenseBody, 'text/plain');
+  }
+  const currentMetadata = typeof existing?.metadata === 'string' ? JSON.parse(existing.metadata) : existing?.metadata || {};
+  const metadata = {
+    ...currentMetadata,
+    manifestId: item.id,
+    sha256: digest,
+    mirrorCompatible: true,
+    stage: item.stage || null,
+    ...(fontPreview?.metadata || {}),
+    ...(item.author ? { author: item.author } : {}),
+    ...(item.licenseUrl ? { license: 'OFL-1.1', licenseUrl: item.licenseUrl, licenseStorageKey } : {}),
+    ...(item.sourceUrl ? { sourceUrl: item.sourceUrl, sourceCommit: 'f6b2b7e8545e086ad3f821af21895d732b6485cf' } : {}),
+  };
   if (existing) {
-    const repairedVariants = await ensurePreviewVariants(existing.id, item, sourcePath, body, mimeType);
+    if (!dryRun) await db('library_assets').where({ id: existing.id }).update({
+      category_id: category.id,
+      name: item.name,
+      type: item.purpose,
+      motion_type: item.motionType || null,
+      metadata: JSON.stringify(metadata),
+      updated_at: new Date(),
+    });
+    await syncEventTypes(existing.id, item.eventTypes || []);
+    const repairedVariants = await ensurePreviewVariants(existing.id, item, sourcePath, body, mimeType, fontPreview);
     if (targetAccountId && !dryRun) {
       const now = new Date();
       await db('account_library').insert({ account_id: targetAccountId, library_asset_id: existing.id, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();
     }
     return { id: existing.id, status: repairedVariants ? (dryRun ? 'ready' : 'repaired') : 'skipped', bytes: body.length };
   }
-  const [category] = await db('library_asset_categories').where({ slug: item.category }).select('id').limit(1);
-  if (!category) throw new Error(`Categoria no inicializada: ${item.category}`);
   if (dryRun) return { id: null, status: 'ready', bytes: body.length, sha256: digest };
   const now = new Date();
   const fileUrl = await put(originalKey, body, mimeType);
-  const metadata = { manifestId: item.id, sha256: digest, mirrorCompatible: true, stage: item.stage || null };
   const [assetId] = await db('library_assets').insert({
     category_id: category?.id || null,
     owner_type: 'viralco',
@@ -125,6 +199,8 @@ async function importItem(item) {
     source_asset_id: null,
     name: item.name,
     type: item.purpose,
+    motion_type: item.motionType || null,
+    applies_to_all_event_types: !(item.eventTypes || []).length,
     storage_key: originalKey,
     file_url: fileUrl,
     preview_url: null,
@@ -138,7 +214,8 @@ async function importItem(item) {
     updated_at: now,
   });
 
-  await ensurePreviewVariants(assetId, item, sourcePath, body, mimeType);
+  await syncEventTypes(assetId, item.eventTypes || []);
+  await ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, fontPreview);
 
   if (targetAccountId) {
     await db('account_library').insert({ account_id: targetAccountId, library_asset_id: assetId, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();
@@ -159,9 +236,10 @@ async function importItem(item) {
     const sources = new Set();
     for (const item of manifest) {
       if (ids.has(item.id)) throw new Error(`ID duplicado en manifiesto: ${item.id}`);
-      if (sources.has(item.source)) throw new Error(`Source duplicado en manifiesto: ${item.source}`);
+      const source = item.source || item.sourceUrl;
+      if (sources.has(source)) throw new Error(`Source duplicado en manifiesto: ${source}`);
       ids.add(item.id);
-      sources.add(item.source);
+      sources.add(source);
     }
     const report = { mode: dryRun ? 'dry-run' : 'import', ready: 0, imported: 0, repaired: 0, skipped: 0, failed: 0, bytes: 0 };
     for (const item of manifest) {
