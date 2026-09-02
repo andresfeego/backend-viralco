@@ -4,7 +4,7 @@
 
 Este documento es la fuente de verdad para la entrega progresiva del modo `espejo`. Define alcance, dependencias, estado y criterio de cierre de las fases A–H. Los detalles técnicos ya implementados de A y B permanecen en [`espejo-magico-fases-a-b.md`](./espejo-magico-fases-a-b.md).
 
-Ultima actualizacion: 2026-09-01.
+Ultima actualizacion: 2026-09-02.
 
 ## Estados
 
@@ -21,8 +21,9 @@ Ultima actualizacion: 2026-09-01.
 | A | Contrato, configuración y sesiones backend | `COMPLETADA` | Consumir el contrato desde el configurador móvil |
 | B | Pool, favoritos y recursos | `COMPLETADA` | Reutilizar `ResourcePicker` dentro de la fase C |
 | B.1 | Fototeca global ViralCo | `COMPLETADA` | Consumir el alcance `available` desde el configurador |
+| B.2 | Taxonomia y filtros de recursos | `COMPLETADA` | Mantener la categoria Plantillas reservada hasta definir su esquema |
 | C | Configurador visual de Espejo | `COMPLETA` | Entregar su publicación al lanzamiento operativo |
-| D | Preparación y lanzamiento operativo | `PAUSADA` | Retomar preflight, caché y control de sesión después de B.1 |
+| D | Preparación y lanzamiento operativo | `PAUSADA` | Retomar preflight, caché y control de sesión después de B.2 |
 | E | Runtime de captura Espejo | `PENDIENTE` | Implementar cámara y secuencia de tomas después de D |
 | F | Composición y entregable | `PENDIENTE` | Implementar render final y pipeline del asset |
 | G | Entrega al invitado | `PENDIENTE` | Integrar QR, descarga, compartir y página pública |
@@ -71,7 +72,7 @@ Estado: `COMPLETADA`.
 
 ### Evidencia de cierre
 
-- 19 assets canónicos importados: 6 plantillas, 3 marcos y 10 animaciones.
+- Los 19 assets originales permanecen: las 6 imagenes antes llamadas plantillas se reclasificaron como marcos, junto con 3 marcos y 10 animaciones.
 - 47 variantes de preview y 66 objetos verificados en R2.
 - Los 19 assets se publican como globales de ViralCo; B.1 elimina la necesidad de enlazarlos previamente a cada cuenta.
 - Segunda importación verificada con 19 omisiones y cero fallos.
@@ -91,6 +92,22 @@ El contrato y la evidencia detallada viven en [`espejo-magico-fototeca-global-b1
 - Posters WebP de videos globales y reparacion idempotente de variantes.
 - Fototeca mobile densa con Global/Favoritos, filtros, busqueda, preview y paginacion incremental.
 - Configurador sin cambios visuales y consumiendo `scope=available`.
+
+## Refinamiento B.2 — Taxonomia y filtros de recursos
+
+Estado: `COMPLETADA`.
+
+El contrato y la evidencia detallada viven en [`espejo-magico-taxonomia-b2.md`](./espejo-magico-taxonomia-b2.md).
+
+### Alcance
+
+- Taxonomia nueva: fondos, marcos, stickers, plantillas reservadas, animaciones y fuentes.
+- Stickers PNG estaticos y GIF animados con filtro contextual.
+- Compatibilidad universal o con multiples tipos de evento, usada solo para busqueda.
+- Migracion de tipos anteriores sin duplicar objetos ni perder favoritos.
+- Diez fuentes Google Fonts con licencia OFL y previews `Tu evento`.
+- Filtros mobile independientes por recurso, evento y movimiento.
+- Badges solo-icono y favoritos perfectamente circulares mediante componentes reutilizables.
 
 ## Fase C — Configurador visual de Espejo
 
@@ -261,7 +278,7 @@ Una capacidad solo puede habilitarse en `MirrorConfigV1` cuando backend, disposi
 
 ## Orden aprobado de trabajo
 
-1. Mantener B.1 y C estabilizadas.
+1. Mantener B.1, B.2 y C estabilizadas.
 2. Retomar y completar D en mobile y dispositivos reales.
 3. Implementar E.
 4. Implementar F.

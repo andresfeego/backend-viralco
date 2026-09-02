@@ -4,6 +4,8 @@
 
 Estado: `COMPLETADA`.
 
+Nota: la taxonomia de tipos de B.1 fue reemplazada por [`espejo-magico-taxonomia-b2.md`](./espejo-magico-taxonomia-b2.md).
+
 B.1 convierte la biblioteca de recursos en un catalogo global ViralCo visible para todas las cuentas, sin crear vinculos previos. Los favoritos siguen siendo compartidos por cuenta y el configurador conserva acceso tanto a recursos globales como propios.
 
 ## Contrato de consulta
@@ -43,4 +45,3 @@ Tras cada prueba de integracion se debe resolver el usuario canonico `superadmin
 - 19 assets canonicos disponibles globalmente.
 - 27 variantes de imagen y 20 posters de video verificados.
 - Segunda ejecucion idempotente con 19 omisiones y cero fallos.
-
