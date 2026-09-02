@@ -75,7 +75,7 @@ function videoPoster(sourcePath) {
   throw new Error(`No se pudo generar poster de ${sourcePath}`);
 }
 
-async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, preparedFontPreview = null) {
+async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, preparedFontPreview = null, force = false) {
   const configs = mimeType.startsWith('video/')
     ? [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }]
     : mimeType.startsWith('font/')
@@ -83,7 +83,7 @@ async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, 
       : [{ name: 'thumb', size: 160 }, { name: 'card', size: 512 }, { name: 'full', size: 1600 }];
   const existing = await db('library_asset_variants').where({ asset_id: assetId }).select('variant', 'file_url');
   const existingByName = new Map(existing.map((variant) => [variant.variant, variant]));
-  const missing = configs.filter((variant) => !existingByName.has(variant.name));
+  const missing = configs.filter((variant) => force || !existingByName.has(variant.name));
   if (!missing.length) return 0;
   if (dryRun) return missing.length;
 
@@ -102,7 +102,9 @@ async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, 
         fit: 'inside',
         withoutEnlargement: true,
       }).webp({ quality: 82 }).toBuffer({ resolveWithObject: true });
-    const key = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${variant.name}.webp`;
+    const rendererVersion = fontPreview?.metadata?.previewRendererVersion;
+    const variantFileName = rendererVersion ? `${variant.name}-v${rendererVersion}.webp` : `${variant.name}.webp`;
+    const key = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${variantFileName}`;
     const url = await put(key, rendered.data, 'image/webp');
     await db('library_asset_variants').insert({
       asset_id: assetId,
@@ -114,7 +116,14 @@ async function ensurePreviewVariants(assetId, item, sourcePath, body, mimeType, 
       height: rendered.info.height,
       size_bytes: rendered.info.size,
       created_at: new Date(),
-    }).onConflict(['asset_id', 'variant']).ignore();
+    }).onConflict(['asset_id', 'variant']).merge({
+      storage_key: key,
+      file_url: url,
+      mime_type: 'image/webp',
+      width: rendered.info.width,
+      height: rendered.info.height,
+      size_bytes: rendered.info.size,
+    });
     if (variant.name === 'thumb') thumbUrl = url;
   }
   if (thumbUrl) await db('library_assets').where({ id: assetId }).update({ preview_url: thumbUrl, updated_at: new Date() });
@@ -161,6 +170,8 @@ async function importItem(item) {
     await put(licenseStorageKey, licenseBody, 'text/plain');
   }
   const currentMetadata = typeof existing?.metadata === 'string' ? JSON.parse(existing.metadata) : existing?.metadata || {};
+  const refreshFontPreviews = Boolean(fontPreview)
+    && Number(currentMetadata.previewRendererVersion || 0) < Number(fontPreview.metadata.previewRendererVersion || 0);
   const metadata = {
     ...currentMetadata,
     manifestId: item.id,
@@ -182,7 +193,7 @@ async function importItem(item) {
       updated_at: new Date(),
     });
     await syncEventTypes(existing.id, item.eventTypes || []);
-    const repairedVariants = await ensurePreviewVariants(existing.id, item, sourcePath, body, mimeType, fontPreview);
+    const repairedVariants = await ensurePreviewVariants(existing.id, item, sourcePath, body, mimeType, fontPreview, refreshFontPreviews);
     if (targetAccountId && !dryRun) {
       const now = new Date();
       await db('account_library').insert({ account_id: targetAccountId, library_asset_id: existing.id, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();

@@ -2,6 +2,7 @@ import * as fontkit from 'fontkit';
 import sharp from 'sharp';
 
 const PREVIEW_TEXT = 'Tu evento';
+const PREVIEW_RENDERER_VERSION = 3;
 const PREVIEW_SIZES = [
   { variant: 'thumb', size: 160 },
   { variant: 'card', size: 512 },
@@ -24,7 +25,7 @@ export async function renderFontPreviewVariants(buffer) {
         <defs><style>
           @font-face { font-family: 'ViralCoPreview'; src: url(data:font/ttf;base64,${encoded}); }
         </style></defs>
-        <rect width="${size}" height="${size}" rx="${Math.round(size * 0.08)}" fill="#f7f9fc"/>
+        <rect width="${size}" height="${size}" fill="#f7f9fc"/>
         <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
           font-family="ViralCoPreview" font-size="${fontSize}" fill="#0b1320">${escapeXml(PREVIEW_TEXT)}</text>
       </svg>
@@ -38,6 +39,7 @@ export async function renderFontPreviewVariants(buffer) {
       fullName: font.fullName || font.familyName,
       postscriptName: font.postscriptName || null,
       previewText: PREVIEW_TEXT,
+      previewRendererVersion: PREVIEW_RENDERER_VERSION,
     },
     variants,
   };
