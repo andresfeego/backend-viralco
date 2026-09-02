@@ -14,7 +14,7 @@ Los stickers usan `motionType=static|animated`: PNG para estaticos y GIF para an
 
 `GET /api/accounts/:accountId/library` conserva `scope`, favoritos, busqueda y paginacion, y añade:
 
-- `eventType=<slug>`: universales mas recursos relacionados.
+- `eventType=<slug>`: exclusivamente recursos relacionados de forma explicita con ese tipo. Los universales permanecen visibles en `Todos`.
 - `motion=static|animated`: stickers del movimiento elegido.
 
 Cada asset devuelve `motionType`, `appliesToAllEventTypes` y `eventTypes`. Las altas aceptan `appliesToAllEventTypes` y `eventTypeIds`; si se omiten, el recurso es universal.

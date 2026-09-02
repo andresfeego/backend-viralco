@@ -427,16 +427,13 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
       conditions.push(eq(libraryAssetsTable.type, 'sticker'), eq(libraryAssetsTable.motionType, motion));
     }
     if (eventType) {
-      conditions.push(or(
-        eq(libraryAssetsTable.appliesToAllEventTypes, true),
-        sql`exists (
-          select 1 from ${libraryAssetEventTypesTable}
-          inner join ${eventTypesTable} on ${eventTypesTable.id} = ${libraryAssetEventTypesTable.eventTypeId}
-          where ${libraryAssetEventTypesTable.libraryAssetId} = ${libraryAssetsTable.id}
-            and ${eventTypesTable.slug} = ${eventType}
-            and ${eventTypesTable.isActive} = true
-        )`,
-      )!);
+      conditions.push(sql`exists (
+        select 1 from ${libraryAssetEventTypesTable}
+        inner join ${eventTypesTable} on ${eventTypesTable.id} = ${libraryAssetEventTypesTable.eventTypeId}
+        where ${libraryAssetEventTypesTable.libraryAssetId} = ${libraryAssetsTable.id}
+          and ${eventTypesTable.slug} = ${eventType}
+          and ${eventTypesTable.isActive} = true
+      )`);
     }
     if (category) conditions.push(eq(libraryAssetCategoriesTable.slug, category));
     if (search) conditions.push(or(like(libraryAssetsTable.name, `%${search}%`), like(accountLibraryTable.displayName, `%${search}%`))!);
@@ -486,16 +483,13 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
     conditions.push(eq(libraryAssetsTable.type, 'sticker'), eq(libraryAssetsTable.motionType, motion));
   }
   if (eventType) {
-    conditions.push(or(
-      eq(libraryAssetsTable.appliesToAllEventTypes, true),
-      sql`exists (
-        select 1 from ${libraryAssetEventTypesTable}
-        inner join ${eventTypesTable} on ${eventTypesTable.id} = ${libraryAssetEventTypesTable.eventTypeId}
-        where ${libraryAssetEventTypesTable.libraryAssetId} = ${libraryAssetsTable.id}
-          and ${eventTypesTable.slug} = ${eventType}
-          and ${eventTypesTable.isActive} = true
-      )`,
-    )!);
+    conditions.push(sql`exists (
+      select 1 from ${libraryAssetEventTypesTable}
+      inner join ${eventTypesTable} on ${eventTypesTable.id} = ${libraryAssetEventTypesTable.eventTypeId}
+      where ${libraryAssetEventTypesTable.libraryAssetId} = ${libraryAssetsTable.id}
+        and ${eventTypesTable.slug} = ${eventType}
+        and ${eventTypesTable.isActive} = true
+    )`);
   }
   if (category) conditions.push(eq(libraryAssetCategoriesTable.slug, category));
   if (search) conditions.push(or(like(libraryAssetsTable.name, `%${search}%`), like(accountLibraryTable.displayName, `%${search}%`))!);

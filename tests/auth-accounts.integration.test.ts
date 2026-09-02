@@ -219,6 +219,11 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(global.body.library[0]).toMatchObject({ id: null, libraryAssetId: globalAssetId, isFavorite: false });
     expect(global.body.pagination.total).toBe(1);
 
+    const strictWeddingFrames = await request(app).get(`/api/accounts/${accountId}/library?scope=global&type=frame&eventType=boda&q=Fototeca`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(strictWeddingFrames.status).toBe(200);
+    expect(strictWeddingFrames.body.library).toHaveLength(0);
+
     const weddingStickers = await request(app).get(`/api/accounts/${accountId}/library?scope=global&type=sticker&motion=animated&eventType=boda`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(weddingStickers.status).toBe(200);
