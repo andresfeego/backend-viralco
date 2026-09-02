@@ -2,32 +2,37 @@ import * as fontkit from 'fontkit';
 import sharp from 'sharp';
 
 const PREVIEW_TEXT = 'Tu evento';
-const PREVIEW_RENDERER_VERSION = 3;
+const PREVIEW_RENDERER_VERSION = 4;
 const PREVIEW_SIZES = [
   { variant: 'thumb', size: 160 },
   { variant: 'card', size: 512 },
 ];
 
-function escapeXml(value) {
-  return String(value).replace(/[<>&"']/g, (character) => ({
-    '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;',
-  })[character]);
+function renderGlyphPaths(font, text, size) {
+  const run = font.layout(text);
+  const advanceWidth = run.positions.reduce((total, position) => total + position.xAdvance, 0);
+  const fontHeight = font.ascent - font.descent;
+  const scale = Math.min((size * 0.84) / advanceWidth, (size * 0.3) / fontHeight);
+  const baseline = (size / 2) + (((font.ascent + font.descent) * scale) / 2);
+  let cursor = (size - (advanceWidth * scale)) / 2;
+  return run.glyphs.map((glyph, index) => {
+    const position = run.positions[index];
+    const x = cursor + (position.xOffset * scale);
+    const y = baseline - (position.yOffset * scale);
+    cursor += position.xAdvance * scale;
+    return `<path d="${glyph.path.toSVG()}" transform="translate(${x} ${y}) scale(${scale} ${-scale})"/>`;
+  }).join('');
 }
 
 export async function renderFontPreviewVariants(buffer) {
   const font = fontkit.create(buffer);
   if (!font?.familyName) throw new Error('Archivo de fuente invalido');
-  const encoded = buffer.toString('base64');
   const variants = await Promise.all(PREVIEW_SIZES.map(async ({ variant, size }) => {
-    const fontSize = Math.round(size * 0.22);
+    const glyphPaths = renderGlyphPaths(font, PREVIEW_TEXT, size);
     const svg = Buffer.from(`
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <defs><style>
-          @font-face { font-family: 'ViralCoPreview'; src: url(data:font/ttf;base64,${encoded}); }
-        </style></defs>
         <rect width="${size}" height="${size}" fill="#f7f9fc"/>
-        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-          font-family="ViralCoPreview" font-size="${fontSize}" fill="#0b1320">${escapeXml(PREVIEW_TEXT)}</text>
+        <g fill="#0b1320">${glyphPaths}</g>
       </svg>
     `);
     const rendered = await sharp(svg).webp({ quality: 88 }).toBuffer({ resolveWithObject: true });
