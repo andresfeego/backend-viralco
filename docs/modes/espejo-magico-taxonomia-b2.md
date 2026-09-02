@@ -37,3 +37,13 @@ El catalogo incluye diez TTF Regular de Google Fonts con commit y SHA-256 fijado
 - Segunda importacion: 29 omitidos, cero reparaciones y cero fallos.
 - Base de datos: 29 assets globales, 67 variantes y 10 previews de fuente.
 - R2: presentes los 106 objetos referenciados por originales, variantes y licencias.
+
+## Ampliacion del catalogo: globos y regalos
+
+Se incorporaron tres recursos globales reproducibles desde `resources/catalog`, todos relacionados de forma explicita con `cumpleanos`:
+
+- Fondo `background-cumpleanos-globos-regalos`.
+- Sticker PNG estatico `sticker-globos-dorados-plateados`.
+- Sticker GIF animado `sticker-globos-animados`.
+
+El importador admite fuentes incluidas en el propio backend mediante `sourceBase=backend`, valida su SHA-256 y registra dimensiones, relacion de aspecto, transparencia y numero de cuadros. La primera ejecucion importo los tres recursos con `thumb`, `card` y `full`; la segunda omitio los 32 elementos del manifiesto, sin fallos ni duplicados. Los doce objetos nuevos —tres originales y nueve variantes— fueron comprobados directamente en R2.

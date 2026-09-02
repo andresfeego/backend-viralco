@@ -11,6 +11,7 @@ const sharp = require('sharp');
 const knexConfig = require('../knexfile.cjs');
 const manifest = require('../resources/magic-mirror-assets.json');
 const dryRun = process.argv.includes('--dry-run');
+const backendRoot = path.resolve(__dirname, '..');
 
 const required = (name) => {
   const value = String(process.env[name] || '').trim();
@@ -40,7 +41,7 @@ async function sourceFor(item) {
     const body = await download(item.sourceUrl);
     return { body, sourcePath: null, fileName: item.fileName || path.basename(new URL(item.sourceUrl).pathname) };
   }
-  const sourcePath = path.resolve(root, item.source);
+  const sourcePath = path.resolve(item.sourceBase === 'backend' ? backendRoot : root, item.source);
   if (!fs.existsSync(sourcePath)) throw new Error(`No existe ${sourcePath}`);
   return { body: fs.readFileSync(sourcePath), sourcePath, fileName: path.basename(sourcePath) };
 }
@@ -150,6 +151,7 @@ async function syncEventTypes(assetId, eventTypeSlugs = []) {
 async function importItem(item) {
   const { body, sourcePath, fileName } = await sourceFor(item);
   const mimeType = mimeFor(fileName);
+  const imageInfo = mimeType.startsWith('image/') ? await sharp(body, { animated: true }).metadata() : null;
   const digest = crypto.createHash('sha256').update(body).digest('hex');
   if (item.sha256 && item.sha256 !== digest) throw new Error(`SHA-256 invalido para ${item.id}`);
   const originalKey = `viralco/library/magic-mirror/${item.purpose}/${item.id}/${fileName}`;
@@ -178,6 +180,15 @@ async function importItem(item) {
     sha256: digest,
     mirrorCompatible: true,
     stage: item.stage || null,
+    ...(imageInfo ? {
+      width: imageInfo.width,
+      height: imageInfo.pageHeight || imageInfo.height,
+      aspectRatio: imageInfo.width && (imageInfo.pageHeight || imageInfo.height)
+        ? imageInfo.width / (imageInfo.pageHeight || imageInfo.height)
+        : null,
+      hasTransparency: Boolean(imageInfo.hasAlpha),
+      frameCount: imageInfo.pages || 1,
+    } : {}),
     ...(fontPreview?.metadata || {}),
     ...(item.author ? { author: item.author } : {}),
     ...(item.licenseUrl ? { license: 'OFL-1.1', licenseUrl: item.licenseUrl, licenseStorageKey } : {}),
