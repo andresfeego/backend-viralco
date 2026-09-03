@@ -1,6 +1,6 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { eventBrandingTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, modesTable } from '../db/schema.ts';
+import { eventBrandingTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, modesTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess } from './account-access.service.ts';
@@ -263,6 +263,28 @@ export async function updateEvent(eventIdValue: unknown, input: any, requester: 
     }
   });
   return getEventById(eventId, requester);
+}
+
+export async function removeEvent(eventIdValue: unknown, requester: any) {
+  const eventId = parseEntityId(eventIdValue, 'ID de evento');
+  const current = await assertEventAccess(eventId, requester, 'write', 'events.delete');
+  const eventModes = await db.select({ id: eventModesTable.id }).from(eventModesTable).where(eq(eventModesTable.eventId, eventId));
+  const eventModeIds = eventModes.map((row) => row.id);
+  const [publications, sessions] = await Promise.all([
+    eventModeIds.length
+      ? db.select({ id: eventModeConfigVersionsTable.id }).from(eventModeConfigVersionsTable).where(inArray(eventModeConfigVersionsTable.eventModeId, eventModeIds)).limit(1)
+      : Promise.resolve([]),
+    eventModeIds.length
+      ? db.select({ id: eventModeSessionsTable.id }).from(eventModeSessionsTable).where(inArray(eventModeSessionsTable.eventModeId, eventModeIds)).limit(1)
+      : Promise.resolve([]),
+  ]);
+  const hasHistory = publications.length > 0 || sessions.length > 0;
+  if (hasHistory) {
+    await db.update(eventsTable).set({ status: 'archived', updatedAt: new Date() }).where(eq(eventsTable.id, eventId));
+    return { deleted: false, archived: true, event: await getEventById(eventId, requester) };
+  }
+  await db.delete(eventsTable).where(eq(eventsTable.id, eventId));
+  return { deleted: true, archived: false, eventId: serializeId(current.id) };
 }
 
 async function assertResourceBelongsToEvent(resourceId: EntityId, eventId: EntityId, purpose?: string) {

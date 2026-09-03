@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postAccountSelf, postMember } from '../controllers/accounts.controller.ts';
+import { deleteAccount, deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postAccountSelf, postMember } from '../controllers/accounts.controller.ts';
 import { getAccountLibrary, patchAccountLibraryFavorite, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryImageUpload, postAccountLibraryUpload } from '../controllers/library.controller.ts';
 import { getAccountEvents, postAccountEvent } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
@@ -13,6 +13,7 @@ router.get('/', getAccounts);
 router.post('/', postAccountSelf);
 router.get('/:accountId', getAccountById);
 router.patch('/:accountId', patchAccount);
+router.delete('/:accountId', deleteAccount);
 router.get('/:accountId/events', getAccountEvents);
 router.post('/:accountId/events', postAccountEvent);
 router.get('/:accountId/library', getAccountLibrary);

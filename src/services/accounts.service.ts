@@ -1,7 +1,8 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { accountsTable, accountUsersTable, libraryAssetsTable, permissionsTable, rolePermissionsTable, rolesTable, usersTable } from '../db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, permissionsTable, rolePermissionsTable, rolesTable, subscriptionsTable, usersTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
+import { deleteR2Objects } from '../r2.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { assertAccountAccess, findAccountById, findAccountMembership, getMembershipPermissions, isSuperAdmin } from './account-access.service.ts';
 import { getLibraryAssetWithVariants } from './library.service.ts';
@@ -69,7 +70,7 @@ export async function listAccounts(requester: any) {
   }
   const rows = await db.select({ account: accountsTable }).from(accountUsersTable)
     .innerJoin(accountsTable, eq(accountUsersTable.accountId, accountsTable.id))
-    .where(and(eq(accountUsersTable.userId, parseEntityId(requester.id)), eq(accountUsersTable.status, 'active')));
+    .where(and(eq(accountUsersTable.userId, parseEntityId(requester.id)), eq(accountUsersTable.status, 'active'), eq(accountsTable.status, 'active')));
   return Promise.all(rows.map((row) => mapAccountWithSubscription(row.account)));
 }
 
@@ -156,6 +157,60 @@ export async function updateAccountStatus(accountIdValue: unknown, statusValue: 
   if (current.isSystem && status !== 'active') throw new ServiceError(409, 'La cuenta de plataforma debe permanecer activa');
   await db.update(accountsTable).set({ status, updatedAt: new Date() }).where(eq(accountsTable.id, accountId));
   return mapAccountWithSubscription(await findAccountById(accountId));
+}
+
+export async function removeAccount(accountIdValue: unknown, input: any, requester: any) {
+  const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
+  const { account } = await assertAccountAccess(accountId, requester, 'write', 'accounts.delete');
+  if (account.isSystem) throw new ServiceError(409, 'La cuenta de plataforma no se puede eliminar');
+  const confirmationName = String(input?.confirmationName || '').trim();
+  if (!confirmationName || confirmationName !== account.name) throw new ServiceError(400, 'Escribe el nombre exacto de la cuenta para confirmar');
+
+  const [publication, session] = await Promise.all([
+    db.select({ id: eventModeConfigVersionsTable.id }).from(eventModeConfigVersionsTable)
+      .innerJoin(eventModesTable, eq(eventModeConfigVersionsTable.eventModeId, eventModesTable.id))
+      .innerJoin(eventsTable, eq(eventModesTable.eventId, eventsTable.id))
+      .where(eq(eventsTable.accountId, accountId)).limit(1),
+    db.select({ id: eventModeSessionsTable.id }).from(eventModeSessionsTable)
+      .innerJoin(eventModesTable, eq(eventModeSessionsTable.eventModeId, eventModesTable.id))
+      .innerJoin(eventsTable, eq(eventModesTable.eventId, eventsTable.id))
+      .where(eq(eventsTable.accountId, accountId)).limit(1),
+  ]);
+
+  if (publication.length || session.length) {
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.update(eventsTable).set({ status: 'archived', updatedAt: now }).where(eq(eventsTable.accountId, accountId));
+      await tx.update(subscriptionsTable).set({ status: 'canceled', canceledAt: now, updatedAt: now }).where(eq(subscriptionsTable.accountId, accountId));
+      await tx.update(accountsTable).set({ status: 'canceled', updatedAt: now }).where(eq(accountsTable.id, accountId));
+    });
+    return { deleted: false, archived: true, accountId: serializeId(accountId), status: 'canceled' };
+  }
+
+  const ownedAssets = await db.select({ id: libraryAssetsTable.id, storageKey: libraryAssetsTable.storageKey })
+    .from(libraryAssetsTable).where(and(eq(libraryAssetsTable.ownerType, 'account'), eq(libraryAssetsTable.ownerAccountId, accountId)));
+  const ownedAssetIds = ownedAssets.map((asset) => asset.id);
+  const variants = ownedAssetIds.length
+    ? await db.select({ storageKey: libraryAssetVariantsTable.storageKey }).from(libraryAssetVariantsTable).where(inArray(libraryAssetVariantsTable.assetId, ownedAssetIds))
+    : [];
+  await db.transaction(async (tx) => {
+    await tx.delete(eventsTable).where(eq(eventsTable.accountId, accountId));
+    await tx.delete(accountLibraryTable).where(eq(accountLibraryTable.accountId, accountId));
+    if (ownedAssetIds.length) await tx.delete(libraryAssetsTable).where(inArray(libraryAssetsTable.id, ownedAssetIds));
+    await tx.delete(subscriptionsTable).where(eq(subscriptionsTable.accountId, accountId));
+    await tx.delete(accountUsersTable).where(eq(accountUsersTable.accountId, accountId));
+    await tx.delete(accountsTable).where(eq(accountsTable.id, accountId));
+  });
+
+  const objectKeys = [...ownedAssets.map((asset) => asset.storageKey), ...variants.map((variant) => variant.storageKey)];
+  let storageObjectsDeleted = 0;
+  let storageCleanupPending = false;
+  try { storageObjectsDeleted = await deleteR2Objects(objectKeys); }
+  catch (error) {
+    storageCleanupPending = objectKeys.length > 0;
+    console.error('[accounts] no se pudieron eliminar objetos privados de R2', error);
+  }
+  return { deleted: true, archived: false, accountId: serializeId(accountId), storageObjectsDeleted, storageCleanupPending };
 }
 
 export async function listMembers(accountIdValue: unknown, requester: any) {

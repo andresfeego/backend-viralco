@@ -1,5 +1,5 @@
 import express from 'express';
-import { deleteResource, getEvent, getModes, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
+import { deleteEvent, deleteResource, getEvent, getModes, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
 import { getConfig, getPublished, patchSession, postEndSession, postPublish, postSession, postValidate, putConfig } from '../controllers/magic-mirror.controller.ts';
@@ -19,6 +19,7 @@ router.patch('/:id/modes/:eventModeId/sessions/:sessionId', patchSession);
 router.post('/:id/modes/:eventModeId/sessions/:sessionId/end', postEndSession);
 router.get('/:id', getEvent);
 router.patch('/:id', patchEvent);
+router.delete('/:id', deleteEvent);
 router.patch('/:id/branding', patchEventBranding);
 router.get('/:id/resources', getResources);
 router.post('/:id/resources', postResource);

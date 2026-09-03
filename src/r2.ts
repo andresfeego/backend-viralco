@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -151,6 +151,18 @@ export async function getR2ObjectBuffer(key: string) {
   const result = await r2.send(new GetObjectCommand({ Bucket: requiredEnv('R2_BUCKET_NAME'), Key: key }));
   if (!result.Body) throw new ServiceError(404, 'Objeto R2 no encontrado');
   return Buffer.from(await result.Body.transformToByteArray());
+}
+
+export async function deleteR2Objects(keys: string[]) {
+  const uniqueKeys = [...new Set(keys.map((key) => String(key || '').trim()).filter(Boolean))];
+  for (let offset = 0; offset < uniqueKeys.length; offset += 1000) {
+    const batch = uniqueKeys.slice(offset, offset + 1000);
+    await r2.send(new DeleteObjectsCommand({
+      Bucket: requiredEnv('R2_BUCKET_NAME'),
+      Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
+    }));
+  }
+  return uniqueKeys.length;
 }
 
 export async function createPresignedReadUrl(key: string) {

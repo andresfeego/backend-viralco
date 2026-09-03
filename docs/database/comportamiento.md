@@ -76,6 +76,18 @@ Este documento complementa `viralco.dbml`. El DBML define estructura, llaves y r
 - Los recursos de cuenta deben guardarse bajo un prefijo de cuenta.
 - Los recursos usados por evento referencian `library_assets`; no necesitan duplicar archivo por evento.
 
+## Eliminacion y conservacion de historial
+
+- `DELETE /api/events/:id` requiere `events.delete`. Owner, administrador y Super Admin pueden ejecutarlo.
+- Un evento sin publicaciones ni sesiones se elimina definitivamente junto con sus relaciones dependientes.
+- Un evento con publicaciones o sesiones se conserva y cambia a `archived`.
+- `DELETE /api/accounts/:accountId` requiere `accounts.delete`, disponible para owner y Super Admin, y exige `confirmationName` igual al nombre exacto de la cuenta.
+- Las cuentas `is_system=true`, incluida `viralco_platform`, nunca pueden eliminarse.
+- Una cuenta sin historial se elimina definitivamente. Sus eventos sin historial, membresias, suscripciones, favoritos y assets privados se eliminan; los objetos R2 de esos assets se limpian despues de confirmar la transaccion.
+- Una cuenta con publicaciones o sesiones cambia a `canceled`; sus eventos pasan a `archived` y su historial se conserva.
+- Los assets globales ViralCo y sus objetos R2 nunca se eliminan como consecuencia de borrar una cuenta.
+- Las futuras capturas de la Fase D deberan contarse como historial antes de habilitar su persistencia productiva.
+
 ## Reglas para pasar de diseno a migraciones
 
 - Antes de crear migraciones, comparar `viralco.dbml` contra las migraciones actuales.

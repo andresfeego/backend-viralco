@@ -3,6 +3,7 @@ import { serviceErrorStatus } from '../lib/service-error.ts';
 import {
   createEvent,
   createEventResource,
+  removeEvent,
   deleteEventResource,
   getEventById,
   listEventResources,
@@ -46,6 +47,11 @@ export async function getEvent(req: any, res: any) {
 export async function patchEvent(req: any, res: any) {
   try { res.status(200).json({ event: await updateEvent(req.params.id, req.body || {}, req.authUser) }); }
   catch (error) { sendError(res, error, 'No se pudo actualizar evento'); }
+}
+
+export async function deleteEvent(req: any, res: any) {
+  try { res.status(200).json(await removeEvent(req.params.id, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo eliminar evento'); }
 }
 
 export async function patchEventBranding(req: any, res: any) {

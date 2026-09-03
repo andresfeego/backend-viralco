@@ -15,7 +15,7 @@ const ROLE_ROWS = [
 const PERMISSION_ROWS = [
   'auth.login', 'auth.register', 'profile.view', 'profile.update',
   'users.view', 'users.create', 'users.update', 'users.delete',
-  'accounts.view', 'accounts.create', 'accounts.update', 'accounts.members.manage',
+  'accounts.view', 'accounts.create', 'accounts.update', 'accounts.delete', 'accounts.members.manage',
   'subscriptions.view', 'subscriptions.manage',
   'library.view', 'library.manage', 'library.global.manage',
   'roles.view', 'roles.assign', 'permissions.view', 'permissions.assign',
@@ -29,7 +29,7 @@ const ROLE_PERMISSIONS = {
   admin: [
     'auth.login', 'profile.view', 'profile.update', 'users.view', 'users.create', 'users.update',
     'accounts.view', 'accounts.update', 'accounts.members.manage', 'subscriptions.view',
-    'library.view', 'library.manage', 'events.view', 'events.create', 'events.update',
+    'library.view', 'library.manage', 'events.view', 'events.create', 'events.update', 'events.delete',
     'events.resources.manage', 'capture.operate', 'portal.view', 'devices.view',
   ],
   operario: ['auth.login', 'profile.view', 'accounts.view', 'library.view', 'events.view', 'capture.operate', 'devices.view'],

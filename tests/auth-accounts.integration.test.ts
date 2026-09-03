@@ -13,8 +13,10 @@ const run = process.env.RUN_DB_TESTS === '1' ? describe : describe.skip;
 run('auth, accounts, subscriptions and events integration', () => {
   let ownerLogin: any;
   let superLogin: any;
+  let adminLogin: any;
   let accountId: string;
   let adminAccountId: string;
+  let historicalEventId: string;
 
   beforeAll(async () => {
     await db.delete(eventBrandingTable);
@@ -179,6 +181,29 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(event.status).toBe(403);
   });
 
+  it('lets an account administrator delete an event without history', async () => {
+    const administrator = await createUser({
+      email: 'event-admin@test.local', password: await hashPassword('Password_123!'), name: 'Event Admin', statusSlug: 'active',
+    });
+    const added = await request(app).post(`/api/accounts/${accountId}/members`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ userId: String(administrator.id), roleSlug: 'admin' });
+    expect(added.status).toBe(201);
+    adminLogin = await request(app).post('/api/auth/login').send({ email: administrator.email, password: 'Password_123!' });
+
+    const created = await request(app).post(`/api/accounts/${accountId}/events`)
+      .set('Authorization', `Bearer ${adminLogin.body.accessToken}`)
+      .send({ name: 'Evento eliminable', eventTypeSlug: 'boda', startDate: '2026-09-08', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
+    expect(created.status).toBe(201);
+    const removed = await request(app).delete(`/api/events/${created.body.event.id}`)
+      .set('Authorization', `Bearer ${adminLogin.body.accessToken}`);
+    expect(removed.status).toBe(200);
+    expect(removed.body).toMatchObject({ deleted: true, archived: false, eventId: created.body.event.id });
+    const missing = await request(app).get(`/api/events/${created.body.event.id}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(missing.status).toBe(404);
+  });
+
   it('exposes active global assets dynamically and isolates shared account favorites', async () => {
     const now = new Date();
     const globalInsert = await db.insert(libraryAssetsTable).values({
@@ -279,6 +304,7 @@ run('auth, accounts, subscriptions and events integration', () => {
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ name: 'Evento Recursos', slug: 'evento_recursos', eventTypeSlug: 'boda', startDate: '2026-09-10', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
     expect(event.status).toBe(201);
+    historicalEventId = event.body.event.id;
 
     const invalidMime = await request(app).post(`/api/accounts/${accountId}/library/uploads`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
@@ -426,5 +452,58 @@ run('auth, accounts, subscriptions and events integration', () => {
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(me.body.accounts[0].account.logoAsset.id).toBe(logo.body.asset.id);
     expect(me.body.accounts[0].account.logoAsset.variants.full.fileUrl).toBe(logo.body.asset.fileUrl);
+  });
+
+  it('archives events with published or captured history instead of deleting them', async () => {
+    const removed = await request(app).delete(`/api/events/${historicalEventId}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(removed.status).toBe(200);
+    expect(removed.body).toMatchObject({ deleted: false, archived: true });
+    expect(removed.body.event.status).toBe('archived');
+    const preserved = await request(app).get(`/api/events/${historicalEventId}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(preserved.status).toBe(200);
+  });
+
+  it('requires exact account confirmation, protects system accounts and removes empty accounts', async () => {
+    const created = await request(app).post('/api/accounts')
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ slug: 'cuenta_eliminable', name: 'Cuenta Eliminable' });
+    expect(created.status).toBe(201);
+    const removableAccountId = created.body.account.id;
+
+    const mismatch = await request(app).delete(`/api/accounts/${removableAccountId}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ confirmationName: 'nombre incorrecto' });
+    expect(mismatch.status).toBe(400);
+
+    const forbidden = await request(app).delete(`/api/accounts/${removableAccountId}`)
+      .set('Authorization', `Bearer ${adminLogin.body.accessToken}`)
+      .send({ confirmationName: 'Cuenta Eliminable' });
+    expect(forbidden.status).toBe(403);
+
+    const removed = await request(app).delete(`/api/accounts/${removableAccountId}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ confirmationName: 'Cuenta Eliminable' });
+    expect(removed.status).toBe(200);
+    expect(removed.body).toMatchObject({ deleted: true, archived: false, accountId: removableAccountId });
+
+    await db.update(accountsTable).set({ isSystem: true }).where(eq(accountsTable.id, BigInt(adminAccountId)));
+    const protectedAccount = await request(app).delete(`/api/accounts/${adminAccountId}`)
+      .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
+      .send({ confirmationName: 'Cuenta Admin' });
+    expect(protectedAccount.status).toBe(409);
+    await db.update(accountsTable).set({ isSystem: false }).where(eq(accountsTable.id, BigInt(adminAccountId)));
+  });
+
+  it('cancels accounts with historical activity and hides them from the owner list', async () => {
+    const removed = await request(app).delete(`/api/accounts/${accountId}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ confirmationName: 'Cuenta Test' });
+    expect(removed.status).toBe(200);
+    expect(removed.body).toMatchObject({ deleted: false, archived: true, accountId, status: 'canceled' });
+    const listed = await request(app).get('/api/accounts')
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(listed.body.accounts.map((account: any) => account.id)).not.toContain(accountId);
   });
 });
