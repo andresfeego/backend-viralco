@@ -98,15 +98,11 @@ async function getResourceById(resourceId: EntityId) {
 }
 
 async function mapBranding(branding: any) {
-  if (!branding) return { id: null, logoResourceId: null, backgroundResourceId: null, logoResource: null, backgroundResource: null, isActive: true };
-  const [logo, background] = await Promise.all([
-    branding.logoResourceId ? getResourceById(branding.logoResourceId) : null,
-    branding.backgroundResourceId ? getResourceById(branding.backgroundResourceId) : null,
-  ]);
+  if (!branding) return { id: null, logoResourceId: null, logoResource: null, isActive: true };
+  const logo = branding.logoResourceId ? await getResourceById(branding.logoResourceId) : null;
   return {
-    id: serializeId(branding.id), logoResourceId: serializeId(branding.logoResourceId), backgroundResourceId: serializeId(branding.backgroundResourceId),
+    id: serializeId(branding.id), logoResourceId: serializeId(branding.logoResourceId),
     logoResource: logo ? await mapEventResourceWithVariants(logo.resource, logo.asset) : null,
-    backgroundResource: background ? await mapEventResourceWithVariants(background.resource, background.asset) : null,
     isActive: branding.isActive === undefined ? true : Boolean(branding.isActive),
   };
 }
@@ -297,14 +293,13 @@ async function assertResourceBelongsToEvent(resourceId: EntityId, eventId: Entit
 export async function updateEventBranding(eventIdValue: unknown, input: any, requester: any) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   await assertEventAccess(eventId, requester, 'write');
+  if (input?.backgroundResourceId !== undefined) {
+    throw new ServiceError(400, 'El background visual del evento ya no es compatible');
+  }
   const patch: any = { updatedAt: new Date() };
   if (input?.logoResourceId !== undefined) {
     patch.logoResourceId = input.logoResourceId ? parseEntityId(input.logoResourceId, 'ID de logo') : null;
     if (patch.logoResourceId) await assertResourceBelongsToEvent(patch.logoResourceId, eventId, 'logo');
-  }
-  if (input?.backgroundResourceId !== undefined) {
-    patch.backgroundResourceId = input.backgroundResourceId ? parseEntityId(input.backgroundResourceId, 'ID de fondo') : null;
-    if (patch.backgroundResourceId) await assertResourceBelongsToEvent(patch.backgroundResourceId, eventId, 'background');
   }
   if (input?.isActive !== undefined) patch.isActive = Boolean(input.isActive);
   const existing = await getBranding(eventId);

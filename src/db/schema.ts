@@ -181,7 +181,6 @@ export const eventBrandingTable = mysqlTable(
     id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
     eventId: bigint('event_id', { mode: 'bigint', unsigned: true }).notNull(),
     logoResourceId: bigint('logo_resource_id', { mode: 'bigint', unsigned: true }),
-    backgroundResourceId: bigint('background_resource_id', { mode: 'bigint', unsigned: true }),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: datetime('created_at').notNull(),
     updatedAt: datetime('updated_at').notNull(),

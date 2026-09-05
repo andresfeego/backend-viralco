@@ -64,7 +64,7 @@ Este documento complementa `viralco.dbml`. El DBML define estructura, llaves y r
 - Cada `event_resources.library_asset_id` apunta a un `library_assets` disponible para el evento.
 - `purpose` define el uso del recurso: `frame`, `overlay`, `intro`, `outro`, `music`, `logo`, `background`, `template`, `branding` u otro valor aprobado.
 - `placement`, `config` y `order_index` definen comportamiento visual u orden de aplicacion.
-- `event_branding.logo_resource_id` y `event_branding.background_resource_id` apuntan a `event_resources`, no a URLs manuales.
+- `event_branding.logo_resource_id` apunta a `event_resources`, no a una URL manual. El evento no mantiene un background visual propio; los fondos pertenecen a la configuracion de cada modo.
 - `asset_event_resources` registra que recursos de configuracion se aplicaron a un asset final capturado o renderizado.
 
 ## R2 y almacenamiento

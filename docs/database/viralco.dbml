@@ -127,11 +127,10 @@ Table event_branding {
   id bigint [pk, increment]
   event_id bigint [not null, unique, ref: > events.id]
   logo_resource_id bigint [ref: > event_resources.id]
-  background_resource_id bigint [ref: > event_resources.id]
   is_active boolean [not null, default: true]
   created_at datetime [not null]
   updated_at datetime [not null]
-  Note: 'Branding visual referencia event_resources; no guarda URLs arbitrarias.'
+  Note: 'El logo visual referencia event_resources; no guarda URLs arbitrarias.'
 }
 
 Table event_users {
