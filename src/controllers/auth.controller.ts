@@ -1,9 +1,8 @@
-import { jsonError } from '../lib/http.ts';
-import { serviceErrorStatus } from '../lib/service-error.ts';
+import { sendApiError } from '../lib/api-error.ts';
 import { forgotPassword, getMyProfile, loginUser, logoutUser, refreshSession, registerUser, resetPassword, updateMyTheme } from '../services/auth.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
-  jsonError(res, serviceErrorStatus(error), error instanceof Error ? error.message : fallback);
+  sendApiError(res.req, res, error, fallback);
 }
 
 export async function register(req: any, res: any) {

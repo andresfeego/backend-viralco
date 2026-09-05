@@ -50,7 +50,9 @@ Se incluye `docker-compose.mariadb.yml` para levantar MariaDB local en puerto `3
 - `npm run db:local:down`: apaga contenedor local
 - `npm run db:local:logs`: logs en vivo de MariaDB local
 - `npm run db:local:migrate`: aplica migraciones contra MariaDB local
-- `npm run db:local:reset`: reinicia DB local desde cero (borra volumen)
+- `npm run db:reset`: reconstruye la DB configurada y ejecuta migrations, seeds, cuenta de plataforma y catálogo global.
+- `npm run db:bootstrap-global-library`: restaura idempotentemente el catálogo global desde R2 y el manifiesto versionado.
+- `npm run db:local:reset:volume`: solo recrea el volumen MariaDB; después debe ejecutarse `npm run db:reset` cuando el servidor vuelva a aceptar conexiones.
 
 ### Flujo recomendado local (proyecto desde cero)
 
@@ -59,7 +61,13 @@ Se incluye `docker-compose.mariadb.yml` para levantar MariaDB local en puerto `3
 3. `npm run db:seed`
 4. configurar `BOOTSTRAP_SUPER_ADMIN_EMAIL`, `BOOTSTRAP_SUPER_ADMIN_PASSWORD` y `BOOTSTRAP_SUPER_ADMIN_NAME`
 5. `npm run db:bootstrap-super-admin`
-6. correr API con tus vars de entorno (`npm run dev`)
+6. `npm run db:bootstrap-platform-account`
+7. `npm run db:bootstrap-global-library`
+8. correr API con tus vars de entorno (`npm run dev`)
+
+`GLOBAL_LIBRARY_ASSET_ROOT` es opcional durante un reset normal: si los objetos ya existen en R2, las filas y variantes se reconstruyen sin el repositorio del prototipo. Solo se exige esa ruta si falta en R2 alguno de los 19 recursos provenientes de `Prueba-viralco`.
+
+El procedimiento operativo completo esta en [`docs/global-library-bootstrap.md`](./docs/global-library-bootstrap.md).
 
 ### Orden recomendado en deploy
 

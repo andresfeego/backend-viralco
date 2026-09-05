@@ -3,6 +3,7 @@ import cors from 'cors';
 import express from 'express';
 
 import { env } from './lib/env.ts';
+import { sendApiError } from './lib/api-error.ts';
 import { auditLogMiddleware } from './middlewares/audit-log.ts';
 import adminRoute from './routes/admin.ts';
 import authRoute from './routes/auth.ts';
@@ -32,10 +33,8 @@ app.use('/api/events', eventsRoute);
 app.use('/api/accounts', accountsRoute);
 app.use('/api/library', libraryRoute);
 
-app.use((error: any, _req: any, res: any, _next: any) => {
-  console.error('[server:error]', error);
-  const message = error instanceof Error ? error.message : 'Error interno del servidor';
-  res.status(500).json({ error: message });
+app.use((error: any, req: any, res: any, _next: any) => {
+  sendApiError(req, res, error, 'Error interno del servidor');
 });
 
 if (process.env.NODE_ENV !== 'test') {

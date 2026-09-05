@@ -2,7 +2,7 @@ import express from 'express';
 import { deleteEvent, deleteResource, getEvent, getModes, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
-import { getConfig, getPublished, patchSession, postEndSession, postPublish, postSession, postValidate, putConfig } from '../controllers/magic-mirror.controller.ts';
+import { getConfig, getPublished, patchSession, postApplyLayoutTemplate, postEndSession, postPublish, postSession, postValidate, putConfig } from '../controllers/magic-mirror.controller.ts';
 
 const router = express.Router();
 router.use(requireAuth, requireActive);
@@ -13,6 +13,7 @@ router.get('/:id/modes/:eventModeId/config', getConfig);
 router.put('/:id/modes/:eventModeId/config', putConfig);
 router.post('/:id/modes/:eventModeId/config/validate', postValidate);
 router.post('/:id/modes/:eventModeId/config/publish', postPublish);
+router.post('/:id/modes/:eventModeId/layout-templates/:assetId/apply', postApplyLayoutTemplate);
 router.get('/:id/modes/:eventModeId/config/published', getPublished);
 router.post('/:id/modes/:eventModeId/sessions', postSession);
 router.patch('/:id/modes/:eventModeId/sessions/:sessionId', patchSession);

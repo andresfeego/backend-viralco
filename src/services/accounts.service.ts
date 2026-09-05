@@ -4,6 +4,7 @@ import { accountLibraryTable, accountsTable, accountUsersTable, eventModeConfigV
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { deleteR2Objects } from '../r2.ts';
 import { ServiceError } from '../lib/service-error.ts';
+import { technicalErrorDetail, writeTechnicalErrorLog } from '../lib/technical-error-log.ts';
 import { assertAccountAccess, findAccountById, findAccountMembership, getMembershipPermissions, isSuperAdmin } from './account-access.service.ts';
 import { getLibraryAssetWithVariants } from './library.service.ts';
 import { createAccountSubscription, getLatestAccountSubscription } from './subscriptions.service.ts';
@@ -208,7 +209,9 @@ export async function removeAccount(accountIdValue: unknown, input: any, request
   try { storageObjectsDeleted = await deleteR2Objects(objectKeys); }
   catch (error) {
     storageCleanupPending = objectKeys.length > 0;
-    console.error('[accounts] no se pudieron eliminar objetos privados de R2', error);
+    const detail = technicalErrorDetail(error);
+    console.error(`[accounts:r2-cleanup] ${detail}`);
+    await writeTechnicalErrorLog({ requestId: 'background-account-cleanup', code: 'R2_ACCOUNT_CLEANUP_FAILED', path: 'accounts.removeAccount', status: 500, detail }).catch(() => {});
   }
   return { deleted: true, archived: false, accountId: serializeId(accountId), storageObjectsDeleted, storageCleanupPending };
 }

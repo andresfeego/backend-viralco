@@ -397,7 +397,7 @@ Table library_assets {
   owner_account_id bigint [ref: > accounts.id]
   source_asset_id bigint [ref: > library_assets.id]
   name varchar(180) [not null]
-  type varchar(32) [not null, note: 'background | frame | sticker | template reservado | animation | font; tipos historicos conservados solo para lectura']
+  type varchar(32) [not null, note: 'background | frame | sticker | template | animation | font; tipos historicos conservados solo para lectura']
   motion_type varchar(16) [note: 'static | animated; solo aplica a sticker']
   applies_to_all_event_types boolean [not null, default: true]
   storage_key varchar(1024) [not null, unique]
@@ -438,6 +438,22 @@ Table library_asset_variants {
   created_at datetime [not null]
   indexes { (asset_id, variant) [unique] }
   Note: 'Variantes optimizadas de imagen generadas por backend. library_assets.file_url apunta a full y preview_url apunta a thumb.'
+}
+
+Table library_asset_templates {
+  library_asset_id bigint [pk, ref: > library_assets.id]
+  schema_version int [not null, default: 1]
+  kind varchar(64) [not null, note: 'mirror-photo-layout']
+  config json [not null, note: 'PhotoLayoutTemplateV1 inmutable']
+  content_hash varchar(64) [not null]
+  preview_renderer_version int [not null, default: 1]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (content_hash, library_asset_id) [unique]
+    (kind, schema_version)
+  }
+  Note: 'Payload tipado de plantillas de diseño. Las variantes thumb/card se generan desde esta misma geometria.'
 }
 
 Table account_library {

@@ -4,7 +4,7 @@
 
 Este documento es la fuente de verdad para la entrega progresiva del modo `espejo`. Define alcance, dependencias, estado y criterio de cierre de las fases A–H. Los detalles técnicos ya implementados de A y B permanecen en [`espejo-magico-fases-a-b.md`](./espejo-magico-fases-a-b.md).
 
-Ultima actualizacion: 2026-09-02.
+Ultima actualizacion: 2026-09-03.
 
 ## Estados
 
@@ -21,7 +21,8 @@ Ultima actualizacion: 2026-09-02.
 | A | Contrato, configuración y sesiones backend | `COMPLETADA` | Consumir el contrato desde el configurador móvil |
 | B | Pool, favoritos y recursos | `COMPLETADA` | Reutilizar `ResourcePicker` dentro de la fase C |
 | B.1 | Fototeca global ViralCo | `COMPLETADA` | Consumir el alcance `available` desde el configurador |
-| B.2 | Taxonomia y filtros de recursos | `COMPLETADA` | Mantener la categoria Plantillas reservada hasta definir su esquema |
+| B.2 | Taxonomia y filtros de recursos | `COMPLETADA` | Usar la taxonomía como base del catálogo |
+| B.3 | Plantillas de diseño fotográfico | `COMPLETADA` | Reutilizar diseños globales y privados desde el configurador |
 | C | Configurador visual de Espejo | `COMPLETA` | Entregar su publicación al lanzamiento operativo |
 | D | Preparación y lanzamiento operativo | `PAUSADA` | Retomar preflight, caché y control de sesión después de B.2 |
 | E | Runtime de captura Espejo | `PENDIENTE` | Implementar cámara y secuencia de tomas después de D |
@@ -108,6 +109,23 @@ El contrato y la evidencia detallada viven en [`espejo-magico-taxonomia-b2.md`](
 - Diez fuentes Google Fonts con licencia OFL y previews `Tu evento`.
 - Filtros mobile independientes por recurso, evento y movimiento.
 - Badges solo-icono y favoritos perfectamente circulares mediante componentes reutilizables.
+
+## Refinamiento B.3 — Plantillas de diseño fotográfico
+
+Estado: `COMPLETADA`.
+
+El contrato y la evidencia detallada viven en [`espejo-magico-plantillas-b3.md`](./espejo-magico-plantillas-b3.md).
+
+El catalogo global completo se repone automaticamente despues de un reset o reseed de integracion mediante `db:bootstrap-global-library`; el procedimiento y sus variables estan documentados en [`../global-library-bootstrap.md`](../global-library-bootstrap.md).
+
+### Alcance
+
+- Contrato inmutable `PhotoLayoutTemplateV1` para formato, tomas, orden y slots.
+- JSON original en R2 y payload consultable en `library_asset_templates`.
+- Miniaturas fieles `thumb/card` generadas desde la misma geometría.
+- Creación global por Super Admin y privada por owner/administrador.
+- Aplicación con revisión optimista que preserva el resto del borrador.
+- Seis plantillas globales iniciales e importador idempotente; `Personalizado` permanece como entrada especial del editor y no como asset.
 
 ## Fase C — Configurador visual de Espejo
 

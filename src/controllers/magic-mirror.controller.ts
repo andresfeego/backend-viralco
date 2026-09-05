@@ -1,5 +1,4 @@
-import { jsonError } from '../lib/http.ts';
-import { serviceErrorStatus } from '../lib/service-error.ts';
+import { sendApiError } from '../lib/api-error.ts';
 import {
   endMirrorSession,
   getMirrorConfig,
@@ -10,15 +9,10 @@ import {
   updateMirrorSession,
   validateMirrorConfig,
 } from '../services/magic-mirror.service.ts';
+import { applyPhotoLayoutTemplate } from '../services/photo-layout-template.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
-  const message = error instanceof Error ? error.message : fallback;
-  try {
-    const parsed = JSON.parse(message);
-    jsonError(res, serviceErrorStatus(error), parsed.code || fallback, parsed);
-  } catch {
-    jsonError(res, serviceErrorStatus(error), message);
-  }
+  sendApiError(res.req, res, error, fallback);
 }
 
 export async function getConfig(req: any, res: any) {
@@ -39,6 +33,11 @@ export async function postValidate(req: any, res: any) {
 export async function postPublish(req: any, res: any) {
   try { res.status(201).json(await publishMirrorConfig(req.params.id, req.params.eventModeId, req.body || {}, req.authUser)); }
   catch (error) { sendError(res, error, 'No se pudo publicar configuracion'); }
+}
+
+export async function postApplyLayoutTemplate(req: any, res: any) {
+  try { res.status(200).json(await applyPhotoLayoutTemplate(req.params.id, req.params.eventModeId, req.params.assetId, req.body || {}, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo aplicar plantilla'); }
 }
 
 export async function getPublished(req: any, res: any) {

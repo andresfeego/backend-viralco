@@ -5,3 +5,4 @@ dist/
 .DS_Store
 *.zip
 db.sqlite
+.runtime-logs/

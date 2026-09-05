@@ -111,7 +111,7 @@ async function findEventTypes(assetIds: EntityId[]) {
   }, new Map<string, any[]>());
 }
 
-async function normalizeEventTypeScope(input: any) {
+export async function normalizeEventTypeScope(input: any) {
   const rawUniversal = input?.appliesToAllEventTypes;
   const appliesToAllEventTypes = rawUniversal === undefined
     ? true
@@ -145,7 +145,7 @@ function normalizeMotionType(type: string, mimeType: string, inputMotionType?: u
   return normalized;
 }
 
-async function replaceAssetEventTypes(assetId: EntityId, eventTypeIds: EntityId[], tx: any = db) {
+export async function replaceAssetEventTypes(assetId: EntityId, eventTypeIds: EntityId[], tx: any = db) {
   await tx.delete(libraryAssetEventTypesTable).where(eq(libraryAssetEventTypesTable.libraryAssetId, assetId));
   if (!eventTypeIds.length) return;
   await tx.insert(libraryAssetEventTypesTable).values(eventTypeIds.map((eventTypeId) => ({
@@ -247,7 +247,7 @@ export async function createLibraryAsset(input: any, requester: any, owner: { ow
       if (thumb) await db.update(libraryAssetsTable).set({ previewUrl: thumb.fileUrl, updatedAt: new Date() }).where(eq(libraryAssetsTable.id, assetId));
     } catch (error) {
       await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, assetId));
-      throw new ServiceError(400, error instanceof Error ? error.message : 'No se pudo procesar la fuente');
+      throw new ServiceError(400, 'No se pudo procesar la fuente seleccionada', { cause: error });
     }
   }
   const asset = await findAsset(assetId);
@@ -372,7 +372,7 @@ export async function createProcessedLibraryImageAsset(input: any, file: any, re
   } catch (error) {
     await db.delete(libraryAssetEventTypesTable).where(eq(libraryAssetEventTypesTable.libraryAssetId, assetId));
     await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, assetId));
-    throw error instanceof ServiceError ? error : new ServiceError(400, error instanceof Error ? error.message : 'No se pudo procesar imagen');
+    throw error instanceof ServiceError ? error : new ServiceError(400, 'No se pudo procesar la imagen seleccionada', { cause: error });
   }
 
   return getLibraryAssetWithVariants(assetId);

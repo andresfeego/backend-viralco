@@ -57,12 +57,116 @@ describe('MirrorConfigV1 local validation', () => {
     expect(result.errors).toContainEqual(expect.objectContaining({ code: 'SHOT_ORDER_INVALID' }));
   });
 
+  it('accepts historical slots and validates optional shot rotation', () => {
+    const config = validConfig();
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    (config.layout.slots[0] as any).rotation = -35;
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    (config.layout.slots[0] as any).rotation = 181;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'SLOT_ROTATION_INVALID' }));
+  });
+
+  it('allows up to 16 visual slots to repeat captures while requiring every shot', () => {
+    const config = validConfig();
+    config.layout.slots.push({ ...config.layout.slots[0], slotId: 'slot-1-2', x: 10, y: 55, width: 40, height: 35 });
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.layout.slots[1].slotId = 'slot-1';
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'SLOT_ID_INVALID' }));
+  });
+
   it('validates text geometry, font and uploaded font requirement', () => {
     const config = validConfig();
     config.layout.textLayers = [{ id: 'name', text: 'ViralCo', x: 20, y: 80, width: 60, size: 22, color: '#111827', font: 'resource' }];
     expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'FONT_RESOURCE_REQUIRED' }));
     config.resources.fontResourceId = '44';
     expect(validateMirrorConfigLocally(config).valid).toBe(true);
+  });
+
+  it('accepts custom text layers with their own font resource', () => {
+    const config = validConfig();
+    config.layout.textLayers = [{ id: 'custom-title', text: 'Bienvenidos', x: 10, y: 8, width: 80, size: 24, color: '#111827', font: 'resource', fontResourceId: '45' }];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+  });
+
+  it('validates sticker geometry', () => {
+    const config = validConfig();
+    config.layout.stickerLayers = [{ id: 'sticker-70', resourceId: '70', x: 10, y: 10, width: 25, height: 25, rotation: 15, order: 0 }];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.layout.stickerLayers[0].x = -24;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'STICKER_BOUNDS_INVALID' }));
+  });
+
+  it('accepts backgrounds and stickers outside the canvas when ten percent remains visible', () => {
+    const config = validConfig();
+    config.layout.backgroundLayers = [
+      { id: 'background-color-overflow', kind: 'color', resourceId: null, color: '#2D3047', x: -90, y: 0, width: 100, height: 100, rotation: 0, order: 0 },
+    ];
+    config.layout.stickerLayers = [
+      { id: 'sticker-70', resourceId: '70', x: -22.5, y: 10, width: 25, height: 25, rotation: 0, order: 0 },
+    ];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+
+    config.layout.backgroundLayers[0].x = -91;
+    config.layout.stickerLayers[0].x = -23;
+    const errors = validateMirrorConfigLocally(config).errors;
+    expect(errors).toContainEqual(expect.objectContaining({ code: 'BACKGROUND_BOUNDS_INVALID' }));
+    expect(errors).toContainEqual(expect.objectContaining({ code: 'STICKER_BOUNDS_INVALID' }));
+  });
+
+  it('allows color backgrounds up to twice the canvas dimensions only', () => {
+    const config = validConfig();
+    config.layout.backgroundLayers = [
+      { id: 'background-color-large', kind: 'color', resourceId: null, color: '#2D3047', x: -50, y: -50, width: 200, height: 200, rotation: 0, order: 0 },
+    ];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.layout.backgroundLayers[0].width = 201;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'BACKGROUND_BOUNDS_INVALID' }));
+
+    config.layout.backgroundLayers[0] = { id: 'background-resource-large', kind: 'resource', resourceId: '80', color: null, x: 0, y: 0, width: 101, height: 100, rotation: 0, order: 0 };
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'BACKGROUND_BOUNDS_INVALID' }));
+  });
+
+  it('allows multiple visual sticker layers to reuse one static resource', () => {
+    const config = validConfig();
+    config.layout.stickerLayers = [
+      { id: 'sticker-70', resourceId: '70', x: 10, y: 10, width: 25, height: 25, rotation: 0, order: 0 },
+      { id: 'sticker-70-2', resourceId: '70', x: 20, y: 20, width: 25, height: 25, rotation: 20, order: 1 },
+    ];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+  });
+
+  it('accepts multiple editable frame layers and validates their limits and geometry', () => {
+    const config = validConfig();
+    config.layout.frameLayers = [
+      { id: 'frame-40', resourceId: '40', x: 0, y: 0, width: 100, height: 100, rotation: 0, order: 0 },
+      { id: 'frame-40-2', resourceId: '40', x: 5, y: 5, width: 90, height: 90, rotation: 12, order: 1 },
+    ];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.layout.frameLayers[1].width = 100;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'FRAME_BOUNDS_INVALID' }));
+  });
+
+  it('accepts ordered color and resource background layers and validates their content', () => {
+    const config = validConfig();
+    config.layout.backgroundLayers = [
+      { id: 'background-color-2D3047', kind: 'color', resourceId: null, color: '#2D3047', x: 0, y: 0, width: 100, height: 100, rotation: 0, order: 0 },
+      { id: 'background-resource-80', kind: 'resource', resourceId: '80', color: null, x: 10, y: 10, width: 80, height: 80, rotation: 15, order: 1 },
+    ];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.layout.backgroundLayers[0].color = 'indigo';
+    config.layout.backgroundLayers[1].order = 0;
+    const errors = validateMirrorConfigLocally(config).errors;
+    expect(errors).toContainEqual(expect.objectContaining({ code: 'BACKGROUND_COLOR_INVALID' }));
+    expect(errors).toContainEqual(expect.objectContaining({ code: 'BACKGROUND_ORDER_INVALID' }));
+  });
+
+  it('requires a unique composition order for stickers', () => {
+    const config = validConfig();
+    config.layout.stickerLayers = [
+      { id: 'sticker-70', resourceId: '70', x: 10, y: 10, width: 20, height: 20, rotation: 0, order: 0 },
+      { id: 'sticker-71', resourceId: '71', x: 40, y: 40, width: 20, height: 20, rotation: 0, order: 0 },
+    ];
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'STICKER_ORDER_DUPLICATE' }));
   });
 
   it('rejects unsupported capture and animation values', () => {

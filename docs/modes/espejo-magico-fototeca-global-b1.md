@@ -36,7 +36,7 @@ El importador idempotente de Espejo Magico:
 - no vuelve a subir binarios completos ni crea posters/demo como assets independientes;
 - publica recursos como globales sin requerir `MAGIC_MIRROR_ACCOUNT_ID`.
 
-Tras cada prueba de integracion se debe resolver el usuario canonico `superadmin@viralco.local` y reimportar desde `/private/tmp/Prueba-viralco`, porque la integracion ejecuta reseed.
+Tras cada prueba de integracion, el propio comando repone la cuenta de plataforma y ejecuta `db:bootstrap-global-library`. El catalogo se reconstruye desde R2 sin depender de `/private/tmp/Prueba-viralco`; una raiz local solo actua como respaldo si falta un objeto original en R2.
 
 ## Evidencia de cierre
 

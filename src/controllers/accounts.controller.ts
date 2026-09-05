@@ -1,9 +1,8 @@
-import { jsonError } from '../lib/http.ts';
-import { serviceErrorStatus } from '../lib/service-error.ts';
+import { sendApiError } from '../lib/api-error.ts';
 import { addMember, createSelfServiceAccount, getAccount, listAccounts, listMembers, removeAccount, removeMember, updateAccount, updateMember } from '../services/accounts.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
-  jsonError(res, serviceErrorStatus(error), error instanceof Error ? error.message : fallback);
+  sendApiError(res.req, res, error, fallback);
 }
 
 export async function getAccounts(req: any, res: any) {

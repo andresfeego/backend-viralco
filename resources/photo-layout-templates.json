@@ -1,0 +1,102 @@
+[
+  {
+    "manifestId": "layout-template-global-digital-v1",
+    "name": "Foto digital",
+    "template": {
+      "schemaVersion": 1,
+      "kind": "mirror-photo-layout",
+      "baseFormat": "personalizar-5x15",
+      "output": { "width": 2000, "height": 2960 },
+      "shotCount": 1,
+      "order": [1],
+      "slots": [{ "photoNumber": 1, "x": 7, "y": 17, "width": 86, "height": 66 }],
+      "duplicateStrip": false
+    }
+  },
+  {
+    "manifestId": "layout-template-global-doble-v1",
+    "name": "Dos fotos",
+    "template": {
+      "schemaVersion": 1,
+      "kind": "mirror-photo-layout",
+      "baseFormat": "personalizar-5x15",
+      "output": { "width": 2000, "height": 2960 },
+      "shotCount": 2,
+      "order": [1, 2],
+      "slots": [
+        { "photoNumber": 1, "x": 7, "y": 17.6, "width": 86, "height": 34.15 },
+        { "photoNumber": 2, "x": 7, "y": 55.25, "width": 86, "height": 34.15 }
+      ],
+      "duplicateStrip": false
+    }
+  },
+  {
+    "manifestId": "layout-template-global-recuerdo-clasico-v1",
+    "name": "Recuerdo clásico de 3 fotos",
+    "template": {
+      "schemaVersion": 1,
+      "kind": "mirror-photo-layout",
+      "baseFormat": "personalizar-5x15",
+      "output": { "width": 2000, "height": 2960 },
+      "shotCount": 3,
+      "order": [1, 2, 3],
+      "slots": [
+        { "photoNumber": 1, "x": 13, "y": 9, "width": 74, "height": 32 },
+        { "photoNumber": 2, "x": 13, "y": 44.5, "width": 35.7, "height": 28.5 },
+        { "photoNumber": 3, "x": 51.3, "y": 44.5, "width": 35.7, "height": 28.5 }
+      ],
+      "duplicateStrip": false
+    }
+  },
+  {
+    "manifestId": "layout-template-global-tira-v1",
+    "name": "Tira 2x6",
+    "template": {
+      "schemaVersion": 1,
+      "kind": "mirror-photo-layout",
+      "baseFormat": "personalizar-5x15",
+      "output": { "width": 2000, "height": 2960 },
+      "shotCount": 3,
+      "order": [1, 2, 3],
+      "slots": [
+        { "photoNumber": 1, "x": 7, "y": 12.33, "width": 86, "height": 24.84 },
+        { "photoNumber": 2, "x": 7, "y": 39.57, "width": 86, "height": 24.84 },
+        { "photoNumber": 3, "x": 7, "y": 66.81, "width": 86, "height": 24.84 }
+      ],
+      "duplicateStrip": true
+    }
+  },
+  {
+    "manifestId": "layout-template-global-postal-v1",
+    "name": "Postal 4x6",
+    "template": {
+      "schemaVersion": 1,
+      "kind": "mirror-photo-layout",
+      "baseFormat": "personalizar-5x15",
+      "output": { "width": 2000, "height": 2960 },
+      "shotCount": 1,
+      "order": [1],
+      "slots": [{ "photoNumber": 1, "x": 7, "y": 17, "width": 86, "height": 65 }],
+      "duplicateStrip": false
+    }
+  },
+  {
+    "manifestId": "layout-template-global-collage-cuatro-v1",
+    "name": "Collage equilibrado de 4 fotos",
+    "template": {
+      "schemaVersion": 1,
+      "kind": "mirror-photo-layout",
+      "baseFormat": "personalizar-5x15",
+      "output": { "width": 2000, "height": 2960 },
+      "shotCount": 4,
+      "order": [1, 2, 3, 4],
+      "slots": [
+        { "photoNumber": 1, "x": 7, "y": 21.33, "width": 41.25, "height": 29.92 },
+        { "photoNumber": 2, "x": 51.75, "y": 21.33, "width": 41.25, "height": 29.92 },
+        { "photoNumber": 3, "x": 7, "y": 54.75, "width": 41.25, "height": 29.92 },
+        { "photoNumber": 4, "x": 51.75, "y": 54.75, "width": 41.25, "height": 29.92 }
+      ],
+      "duplicateStrip": false
+    }
+  }
+]

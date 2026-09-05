@@ -1,5 +1,4 @@
-import { jsonError } from '../lib/http.ts';
-import { serviceErrorStatus } from '../lib/service-error.ts';
+import { sendApiError } from '../lib/api-error.ts';
 import {
   addAssetToAccountLibrary,
   cloneAssetForAccount,
@@ -11,9 +10,10 @@ import {
   prepareGlobalLibraryUpload,
   setAccountLibraryFavorite,
 } from '../services/library.service.ts';
+import { createPhotoLayoutTemplate, getPhotoLayoutTemplate } from '../services/photo-layout-template.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
-  jsonError(res, serviceErrorStatus(error), error instanceof Error ? error.message : fallback);
+  sendApiError(res.req, res, error, fallback);
 }
 
 export async function getLibraryAssets(req: any, res: any) {
@@ -29,6 +29,23 @@ export async function postGlobalLibraryUpload(req: any, res: any) {
 export async function postGlobalLibraryAsset(req: any, res: any) {
   try { res.status(201).json({ asset: await createLibraryAsset(req.body || {}, req.authUser, { ownerType: 'viralco' }) }); }
   catch (error) { sendError(res, error, 'No se pudo crear recurso global'); }
+}
+
+export async function postGlobalPhotoLayoutTemplate(req: any, res: any) {
+  try { res.status(201).json(await createPhotoLayoutTemplate(req.body || {}, req.authUser, { ownerType: 'viralco' })); }
+  catch (error) { sendError(res, error, 'No se pudo crear plantilla global'); }
+}
+
+export async function postAccountPhotoLayoutTemplate(req: any, res: any) {
+  try {
+    const accountId = BigInt(String(req.params.accountId));
+    res.status(201).json(await createPhotoLayoutTemplate(req.body || {}, req.authUser, { ownerType: 'account', accountId }));
+  } catch (error) { sendError(res, error, 'No se pudo crear plantilla de cuenta'); }
+}
+
+export async function getAccountPhotoLayoutTemplate(req: any, res: any) {
+  try { res.status(200).json(await getPhotoLayoutTemplate(req.params.libraryAssetId, req.authUser, req.params.accountId)); }
+  catch (error) { sendError(res, error, 'No se pudo obtener plantilla'); }
 }
 
 export async function postGlobalLibraryImageUpload(req: any, res: any) {

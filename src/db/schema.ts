@@ -403,6 +403,24 @@ export const libraryAssetVariantsTable = mysqlTable(
   ]
 );
 
+export const libraryAssetTemplatesTable = mysqlTable(
+  'library_asset_templates',
+  {
+    libraryAssetId: bigint('library_asset_id', { mode: 'bigint', unsigned: true }).primaryKey().references(() => libraryAssetsTable.id, { onDelete: 'cascade' }),
+    schemaVersion: int('schema_version').notNull().default(1),
+    kind: varchar('kind', { length: 64 }).notNull(),
+    config: json('config').notNull(),
+    contentHash: varchar('content_hash', { length: 64 }).notNull(),
+    previewRendererVersion: int('preview_renderer_version').notNull().default(1),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('library_asset_templates_hash_asset_uq').on(table.contentHash, table.libraryAssetId),
+    index('library_asset_templates_kind_version_idx').on(table.kind, table.schemaVersion),
+  ]
+);
+
 export const accountLibraryTable = mysqlTable(
   'account_library',
   {

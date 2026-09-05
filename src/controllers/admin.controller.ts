@@ -1,13 +1,13 @@
 import { env } from '../lib/env.ts';
 import { jsonError } from '../lib/http.ts';
-import { serviceErrorStatus } from '../lib/service-error.ts';
+import { sendApiError } from '../lib/api-error.ts';
 import { activateUser, changeUserStatus, createAdminUser, deactivateUser, listAdminUsers } from '../services/admin.service.ts';
 import { createAccount, updateAccountStatus } from '../services/accounts.service.ts';
 import { listBitacora } from '../services/bitacora.service.ts';
 import { createSuperAdminConfirmToken } from '../services/token.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
-  jsonError(res, serviceErrorStatus(error), error instanceof Error ? error.message : fallback);
+  sendApiError(res.req, res, error, fallback);
 }
 
 export async function confirmSuperAdminPassword(req: any, res: any) {

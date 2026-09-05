@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { logBitacoraEvent } from '../services/bitacora.service.ts';
+import { technicalErrorDetail, writeTechnicalErrorLog } from '../lib/technical-error-log.ts';
 
 function sanitizeBody(body: any) {
   if (!body || typeof body !== 'object') {
@@ -54,6 +55,7 @@ function hashIp(req: any) {
 export function auditLogMiddleware(req: any, res: any, next: any) {
   const requestId = crypto.randomUUID();
   req.requestId = requestId;
+  res.setHeader('x-request-id', requestId);
 
   res.on('finish', () => {
     const requestPath = String(req.originalUrl || req.path || '').split('?')[0];
@@ -66,6 +68,7 @@ export function auditLogMiddleware(req: any, res: any, next: any) {
 
     const status = Number(res.statusCode || 200);
     const isSuccess = status >= 200 && status < 400;
+    const apiError = res.locals?.apiError || null;
     const authUser = req.authUser || null;
     const fallbackEmail = typeof req.body?.email === 'string' ? String(req.body.email).trim().toLowerCase() : null;
 
@@ -83,11 +86,20 @@ export function auditLogMiddleware(req: any, res: any, next: any) {
       ipHash: hashIp(req),
       userAgent: String(req.headers['user-agent'] || '').slice(0, 255),
       payloadResumen: sanitizeBody(req.body),
-      mensaje: `${req.method} ${req.path} -> ${status}`,
-      errorCode: isSuccess ? null : `HTTP_${status}`,
-      errorDetalle: isSuccess ? null : 'Operacion finalizo con error HTTP',
+      mensaje: apiError?.publicMessage || `${req.method} ${req.path} -> ${status}`,
+      errorCode: isSuccess ? null : apiError?.code || `HTTP_${status}`,
+      errorDetalle: isSuccess ? null : apiError?.detail || 'Operacion finalizo con error HTTP',
     }).catch((error) => {
-      console.error('[bitacora] error registrando evento', error);
+      const detail = technicalErrorDetail(error);
+      console.error(`[bitacora][${requestId}] ${detail}`);
+      void writeTechnicalErrorLog({
+        requestId,
+        code: 'AUDIT_LOG_WRITE_FAILED',
+        method: req.method,
+        path: requestPath,
+        status,
+        detail,
+      }).catch((fallbackError) => console.error(`[technical-log][${requestId}] ${technicalErrorDetail(fallbackError)}`));
     });
   });
 

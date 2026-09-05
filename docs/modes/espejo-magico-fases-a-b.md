@@ -51,7 +51,8 @@ Se admiten los propositos `start_screen`, `animation`, `gif_overlay` y `font`, a
 - La publicacion valida orden y slots, formato de impresion, suscripcion, cuenta, evento, modo, proposito y familia MIME de cada recurso.
 - El manifiesto de lanzamiento resuelve el asset y sus variantes; la configuracion publicada conserva solo IDs.
 - La bitacora HTTP existente registra guardados, publicaciones, inicios, heartbeats exitosos o fallidos y cierres sin exponer secretos.
-- El importador `assets:import:magic-mirror` usa un manifiesto versionado, hash y keys deterministas. Requiere una raiz local aprobada y credenciales R2 al momento de ejecutar la migracion de binarios.
-- `assets:check:magic-mirror` valida previamente manifiesto, archivos, categorias, usuario creador y cuenta destino sin escribir en R2 ni en base de datos.
+- El importador `assets:import:magic-mirror` usa un manifiesto versionado, hashes y keys deterministas. Puede reconstruir el indice completo desde los objetos que ya existen en R2; `GLOBAL_LIBRARY_ASSET_ROOT` solo es necesario para reparar un original del prototipo que falte en R2.
+- `db:bootstrap-global-library` repone idempotentemente medios, variantes, tipos de evento y plantillas globales. El Super Admin canonico se resuelve mediante `BOOTSTRAP_SUPER_ADMIN_EMAIL` si no se especifica `GLOBAL_LIBRARY_CREATED_BY`.
+- `assets:check:magic-mirror` valida previamente el manifiesto y sus fuentes sin escribir en R2 ni en base de datos.
 - La cuenta protegida `viralco_platform` se crea de forma idempotente junto al Super Admin canonico. Los assets globales conservan `owner_type=viralco` y `owner_account_id=null`; la cuenta representa a la plataforma, no limita el alcance global.
 - Los recursos canonicos pueden enlazarse al pool de `viralco_platform` mediante `MAGIC_MIRROR_ACCOUNT_ID` sin duplicar archivos ni cambiar su propiedad global.

@@ -1,4 +1,4 @@
-import { DeleteObjectsCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -151,6 +151,17 @@ export async function getR2ObjectBuffer(key: string) {
   const result = await r2.send(new GetObjectCommand({ Bucket: requiredEnv('R2_BUCKET_NAME'), Key: key }));
   if (!result.Body) throw new ServiceError(404, 'Objeto R2 no encontrado');
   return Buffer.from(await result.Body.transformToByteArray());
+}
+
+export async function r2ObjectExists(key: string) {
+  try {
+    await r2.send(new HeadObjectCommand({ Bucket: requiredEnv('R2_BUCKET_NAME'), Key: key }));
+    return true;
+  } catch (error: any) {
+    const status = error?.$metadata?.httpStatusCode;
+    if (status === 404 || error?.name === 'NotFound' || error?.name === 'NoSuchKey') return false;
+    throw error;
+  }
 }
 
 export async function deleteR2Objects(keys: string[]) {

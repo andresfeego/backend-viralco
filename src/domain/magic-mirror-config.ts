@@ -22,16 +22,17 @@ const LENSES = new Set(['normal', 'wide', 'ultra-wide']);
 const QUALITIES = new Set(['medium', 'high', 'superior']);
 const EXPERIENCE_STYLES = new Set(['video-vertical', 'minimal', 'party']);
 const ANIMATION_STAGE_SET = new Set<string>(MIRROR_ANIMATION_STAGES);
+const MIRROR_LAYER_MIN_VISIBLE_RATIO = 0.1;
 
 export type MirrorValidationIssue = { path: string; code: string; message: string };
 
 export const defaultMirrorConfig = () => ({
   layout: {
     format: 'digital', output: { width: 1200, height: 1500 }, shotCount: 1, order: [1],
-    slots: [{ photoNumber: 1, x: 7, y: 17, width: 86, height: 66 }], duplicateStrip: false, textLayers: [],
+    slots: [{ slotId: 'slot-1', photoNumber: 1, x: 7, y: 17, width: 86, height: 66 }], duplicateStrip: false, backgroundLayers: [], frameLayers: [], textLayers: [], stickerLayers: [],
   },
   resources: {
-    templateResourceId: null, frameResourceId: null, gifOverlayResourceId: null,
+    templateResourceId: null, layoutTemplateResourceId: null, frameResourceId: null, gifOverlayResourceId: null,
     startScreenResourceId: null, backgroundResourceId: null, fontResourceId: null, animationResourceIds: [],
   },
   capture: {
@@ -52,6 +53,14 @@ function issue(path: string, code: string, message: string): MirrorValidationIss
 
 function boundedInteger(value: unknown, min: number, max: number) {
   return Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
+}
+
+function hasValidOverflowBounds(values: number[], maximumSize = 100) {
+  const [x, y, width, height] = values;
+  if (values.some((value) => !Number.isFinite(value)) || width <= 0 || height <= 0 || width > maximumSize || height > maximumSize) return false;
+  const visibleWidth = Math.max(0, Math.min(100, x + width) - Math.max(0, x));
+  const visibleHeight = Math.max(0, Math.min(100, y + height) - Math.max(0, y));
+  return (visibleWidth * visibleHeight) / (width * height) >= MIRROR_LAYER_MIN_VISIBLE_RATIO - 1e-9;
 }
 
 function finiteInRange(value: unknown, min: number, max: number) {
@@ -79,16 +88,53 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
   if (typeof layout.duplicateStrip !== 'boolean') errors.push(issue('layout.duplicateStrip', 'BOOLEAN_REQUIRED', 'La tira duplicada debe ser booleana'));
 
   const slots = Array.isArray(layout.slots) ? layout.slots : [];
-  if (slots.length !== shotCount) errors.push(issue('layout.slots', 'SLOTS_COUNT_INVALID', 'Debe existir un slot por toma'));
+  if (slots.length < shotCount || slots.length > 16) errors.push(issue('layout.slots', 'SLOTS_COUNT_INVALID', 'Debe existir al menos un slot por toma y maximo 16 slots visuales'));
   const order = Array.isArray(layout.order) ? layout.order.map(Number) : [];
   const expectedOrder = Array.from({ length: shotCount }, (_, index) => index + 1);
   if (order.length !== shotCount || new Set(order).size !== shotCount || order.some((value) => !expectedOrder.includes(value))) errors.push(issue('layout.order', 'SHOT_ORDER_INVALID', 'El orden debe incluir cada toma exactamente una vez'));
   const slotPhotoNumbers = slots.map((slot: any) => Number(slot?.photoNumber));
-  if (new Set(slotPhotoNumbers).size !== slots.length || slotPhotoNumbers.some((value) => !expectedOrder.includes(value))) errors.push(issue('layout.slots', 'SLOT_PHOTO_NUMBER_INVALID', 'Cada slot debe corresponder a una toma unica'));
+  if (slotPhotoNumbers.some((value) => !expectedOrder.includes(value)) || expectedOrder.some((value) => !slotPhotoNumbers.includes(value))) errors.push(issue('layout.slots', 'SLOT_PHOTO_NUMBER_INVALID', 'Cada toma debe estar representada en al menos un slot'));
+  const suppliedSlotIds = slots.map((slot: any) => slot?.slotId).filter((value: any) => value !== undefined && value !== null);
+  if (suppliedSlotIds.some((value: any) => !/^[a-z0-9][a-z0-9-]{0,63}$/i.test(String(value))) || new Set(suppliedSlotIds.map(String)).size !== suppliedSlotIds.length) errors.push(issue('layout.slots', 'SLOT_ID_INVALID', 'Cada slot visual debe tener un identificador unico valido'));
   slots.forEach((slot: any, index: number) => {
     const values = [slot?.x, slot?.y, slot?.width, slot?.height].map(Number);
     if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] < 0 || values[2] <= 0 || values[3] <= 0 || values[0] + values[2] > 100 || values[1] + values[3] > 100) errors.push(issue(`layout.slots.${index}`, 'SLOT_BOUNDS_INVALID', 'El slot debe permanecer dentro del lienzo'));
+    if (!finiteInRange(slot?.rotation ?? 0, -180, 180)) errors.push(issue(`layout.slots.${index}.rotation`, 'SLOT_ROTATION_INVALID', 'La rotacion debe estar entre -180 y 180 grados'));
   });
+
+  const frameLayers = Array.isArray(layout.frameLayers) ? layout.frameLayers : [];
+  if (layout.frameLayers !== undefined && !Array.isArray(layout.frameLayers)) errors.push(issue('layout.frameLayers', 'FRAME_LAYERS_INVALID', 'Los marcos deben ser un arreglo'));
+  if (frameLayers.length > 10) errors.push(issue('layout.frameLayers', 'FRAME_LIMIT_EXCEEDED', 'Puedes agregar hasta 10 marcos'));
+  const frameIds = frameLayers.map((layer: any) => String(layer?.id || ''));
+  if (new Set(frameIds).size !== frameIds.length || frameIds.some((id: string) => !/^frame-[a-z0-9-]{1,80}$/i.test(id))) errors.push(issue('layout.frameLayers', 'FRAME_ID_INVALID', 'Cada marco debe tener un identificador unico'));
+  const frameOrders = frameLayers.map((layer: any) => Number(layer?.order));
+  if (new Set(frameOrders).size !== frameOrders.length || frameOrders.some((order: number) => !Number.isInteger(order) || order < 0 || order >= frameLayers.length)) errors.push(issue('layout.frameLayers', 'FRAME_ORDER_INVALID', 'El orden de los marcos no es valido'));
+  frameLayers.forEach((layer: any, index: number) => {
+    const path = `layout.frameLayers.${index}`;
+    if (!/^\d+$/.test(String(layer?.resourceId || ''))) errors.push(issue(`${path}.resourceId`, 'FRAME_RESOURCE_INVALID', 'Cada marco debe usar un recurso valido'));
+    const values = [layer?.x, layer?.y, layer?.width, layer?.height].map(Number);
+    if (values.some((value) => !Number.isFinite(value)) || values[0] < 0 || values[1] < 0 || values[2] <= 0 || values[3] <= 0 || values[0] + values[2] > 100 || values[1] + values[3] > 100) errors.push(issue(path, 'FRAME_BOUNDS_INVALID', 'El marco debe permanecer dentro del lienzo'));
+    if (!finiteInRange(layer?.rotation ?? 0, -180, 180)) errors.push(issue(`${path}.rotation`, 'FRAME_ROTATION_INVALID', 'La rotacion debe estar entre -180 y 180 grados'));
+  });
+
+  const backgroundLayers = Array.isArray(layout.backgroundLayers) ? layout.backgroundLayers : [];
+  if (layout.backgroundLayers !== undefined && !Array.isArray(layout.backgroundLayers)) errors.push(issue('layout.backgroundLayers', 'BACKGROUND_LAYERS_INVALID', 'Los fondos deben ser un arreglo'));
+  if (backgroundLayers.length > 10) errors.push(issue('layout.backgroundLayers', 'BACKGROUND_LIMIT_EXCEEDED', 'Puedes agregar hasta 10 fondos'));
+  const backgroundIds = backgroundLayers.map((layer: any) => String(layer?.id || ''));
+  if (new Set(backgroundIds).size !== backgroundIds.length || backgroundIds.some((id: string) => !/^background-(resource|color)-[a-z0-9-]{1,80}$/i.test(id))) errors.push(issue('layout.backgroundLayers', 'BACKGROUND_ID_INVALID', 'Cada fondo debe tener un identificador unico'));
+  const backgroundOrders = backgroundLayers.map((layer: any) => Number(layer?.order));
+  if (new Set(backgroundOrders).size !== backgroundOrders.length || backgroundOrders.some((order: number) => !Number.isInteger(order) || order < 0 || order >= backgroundLayers.length)) errors.push(issue('layout.backgroundLayers', 'BACKGROUND_ORDER_INVALID', 'El orden de los fondos no es valido'));
+  backgroundLayers.forEach((layer: any, index: number) => {
+    const path = `layout.backgroundLayers.${index}`;
+    if (!['resource', 'color'].includes(String(layer?.kind || ''))) errors.push(issue(`${path}.kind`, 'BACKGROUND_KIND_INVALID', 'El tipo de fondo no es valido'));
+    if (layer?.kind === 'resource' && !/^\d+$/.test(String(layer?.resourceId || ''))) errors.push(issue(`${path}.resourceId`, 'BACKGROUND_RESOURCE_INVALID', 'El fondo debe usar un recurso valido'));
+    if (layer?.kind === 'color' && !/^#[0-9a-f]{6}$/i.test(String(layer?.color || ''))) errors.push(issue(`${path}.color`, 'BACKGROUND_COLOR_INVALID', 'El fondo debe usar un color hexadecimal'));
+    const values = [layer?.x, layer?.y, layer?.width, layer?.height].map(Number);
+    const maximumSize = layer?.kind === 'color' ? 200 : 100;
+    if (!hasValidOverflowBounds(values, maximumSize)) errors.push(issue(path, 'BACKGROUND_BOUNDS_INVALID', 'El fondo debe conservar al menos 10% visible y respetar su tamano maximo'));
+    if (!finiteInRange(layer?.rotation ?? 0, -180, 180)) errors.push(issue(`${path}.rotation`, 'BACKGROUND_ROTATION_INVALID', 'La rotacion debe estar entre -180 y 180 grados'));
+  });
+
 
   const textLayers = Array.isArray(layout.textLayers) ? layout.textLayers : [];
   if (!Array.isArray(layout.textLayers)) errors.push(issue('layout.textLayers', 'TEXT_LAYERS_INVALID', 'Las capas de texto deben ser un arreglo'));
@@ -96,19 +142,40 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
   if (new Set(textLayerIds).size !== textLayerIds.length) errors.push(issue('layout.textLayers', 'TEXT_LAYER_DUPLICATE', 'Cada capa de texto debe aparecer una sola vez'));
   textLayers.forEach((layer: any, index: number) => {
     const path = `layout.textLayers.${index}`;
-    if (!TEXT_LAYER_IDS.has(String(layer?.id || ''))) errors.push(issue(`${path}.id`, 'TEXT_LAYER_ID_INVALID', 'La capa de texto no esta soportada'));
+    const layerId = String(layer?.id || '');
+    if (!TEXT_LAYER_IDS.has(layerId) && !/^custom-[a-z0-9-]{1,64}$/i.test(layerId)) errors.push(issue(`${path}.id`, 'TEXT_LAYER_ID_INVALID', 'La capa de texto no esta soportada'));
     if (typeof layer?.text !== 'string' || layer.text.length > 160) errors.push(issue(`${path}.text`, 'TEXT_INVALID', 'El texto debe tener maximo 160 caracteres'));
     if (!finiteInRange(layer?.x, 0, 100) || !finiteInRange(layer?.y, 0, 100) || !finiteInRange(layer?.width, 1, 100) || Number(layer.x) + Number(layer.width) > 100) errors.push(issue(path, 'TEXT_BOUNDS_INVALID', 'La capa de texto debe permanecer dentro del lienzo'));
     if (!boundedInteger(layer?.size, 8, 54)) errors.push(issue(`${path}.size`, 'TEXT_SIZE_INVALID', 'El tamano debe estar entre 8 y 54'));
     if (!/^#[0-9a-f]{6}$/i.test(String(layer?.color || ''))) errors.push(issue(`${path}.color`, 'TEXT_COLOR_INVALID', 'El color debe usar formato hexadecimal'));
     if (!TEXT_FONTS.has(String(layer?.font || ''))) errors.push(issue(`${path}.font`, 'TEXT_FONT_INVALID', 'La fuente no esta soportada'));
+    if (layer?.fontResourceId !== undefined && layer?.fontResourceId !== null && !/^\d+$/.test(String(layer.fontResourceId))) errors.push(issue(`${path}.fontResourceId`, 'FONT_RESOURCE_ID_INVALID', 'La fuente seleccionada no es valida'));
+  });
+
+  const stickerLayers = Array.isArray(layout.stickerLayers) ? layout.stickerLayers : [];
+  if (!Array.isArray(layout.stickerLayers)) errors.push(issue('layout.stickerLayers', 'STICKER_LAYERS_INVALID', 'Los stickers deben ser un arreglo'));
+  if (stickerLayers.length > 10) errors.push(issue('layout.stickerLayers', 'STICKER_LIMIT_EXCEEDED', 'Puedes agregar hasta 10 stickers'));
+  const stickerIds = stickerLayers.map((layer: any) => String(layer?.id || ''));
+  const stickerResourceIds = stickerLayers.map((layer: any) => String(layer?.resourceId || ''));
+  if (new Set(stickerIds).size !== stickerIds.length || stickerIds.some((id: string) => !/^sticker-[a-z0-9-]{1,64}$/i.test(id))) errors.push(issue('layout.stickerLayers', 'STICKER_ID_INVALID', 'Cada sticker debe tener un identificador unico'));
+  if (stickerResourceIds.some((id: string) => !/^\d+$/.test(id))) errors.push(issue('layout.stickerLayers', 'STICKER_RESOURCE_INVALID', 'Cada sticker debe usar un recurso valido'));
+  const stickerOrders = stickerLayers.map((layer: any) => layer?.order).filter((order: any) => Number.isInteger(order));
+  if (new Set(stickerOrders).size !== stickerOrders.length) errors.push(issue('layout.stickerLayers', 'STICKER_ORDER_DUPLICATE', 'Cada sticker debe tener un orden unico'));
+  stickerLayers.forEach((layer: any, index: number) => {
+    const path = `layout.stickerLayers.${index}`;
+    const x = Number(layer?.x); const y = Number(layer?.y); const width = Number(layer?.width); const height = Number(layer?.height);
+    if (!hasValidOverflowBounds([x, y, width, height])) errors.push(issue(path, 'STICKER_BOUNDS_INVALID', 'El sticker debe conservar al menos 10% visible dentro del lienzo'));
+    if (!finiteInRange(layer?.rotation ?? 0, -180, 180)) errors.push(issue(`${path}.rotation`, 'STICKER_ROTATION_INVALID', 'La rotacion debe estar entre -180 y 180 grados'));
+    if (!boundedInteger(layer?.order ?? index, 0, 9)) errors.push(issue(`${path}.order`, 'STICKER_ORDER_INVALID', 'El orden del sticker no es valido'));
   });
 
   const resources = config.resources || {};
   const animationIds = Array.isArray(resources.animationResourceIds) ? resources.animationResourceIds.map(String) : [];
   if (!Array.isArray(resources.animationResourceIds)) errors.push(issue('resources.animationResourceIds', 'ANIMATION_RESOURCES_INVALID', 'Las animaciones deben ser un arreglo'));
   if (new Set(animationIds).size !== animationIds.length) errors.push(issue('resources.animationResourceIds', 'ANIMATION_RESOURCE_DUPLICATE', 'Una animacion no puede repetirse'));
-  if (textLayers.some((layer: any) => layer?.font === 'resource') && !resources.fontResourceId) errors.push(issue('resources.fontResourceId', 'FONT_RESOURCE_REQUIRED', 'Selecciona una fuente del pool para las capas configuradas'));
+  textLayers.forEach((layer: any, index: number) => {
+    if (layer?.font === 'resource' && !layer?.fontResourceId && !resources.fontResourceId) errors.push(issue(`layout.textLayers.${index}.fontResourceId`, 'FONT_RESOURCE_REQUIRED', 'Selecciona una fuente del pool para esta capa'));
+  });
 
   const capture = config.capture || {};
   ['firstCountdownSeconds', 'nextCountdownSeconds', 'reviewSeconds'].forEach((key) => {
@@ -139,7 +206,6 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
   });
   if (!boundedInteger(config.runtime?.autoResetSeconds, 5, 300)) errors.push(issue('runtime.autoResetSeconds', 'AUTO_RESET_INVALID', 'El reinicio debe estar entre 5 y 300 segundos'));
   if (typeof config.runtime?.operatorMenuEnabled !== 'boolean') errors.push(issue('runtime.operatorMenuEnabled', 'BOOLEAN_REQUIRED', 'El menu del operador debe ser booleano'));
-  if (publish && !resources.templateResourceId && !resources.frameResourceId) errors.push(issue('resources', 'FRAME_REQUIRED', 'Selecciona una plantilla o marco antes de publicar'));
+  if (publish && !resources.layoutTemplateResourceId && !resources.templateResourceId && !resources.frameResourceId && !frameLayers.length) errors.push(issue('resources', 'FRAME_REQUIRED', 'Selecciona una plantilla o marco antes de publicar'));
   return { valid: errors.length === 0, errors, warnings };
 }
-
