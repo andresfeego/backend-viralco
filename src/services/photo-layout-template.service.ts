@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
-  accountLibraryTable, eventModeConfigsTable, eventModesTable, eventResourcesTable, eventsTable, libraryAssetsTable,
+  accountLibraryTable, eventModeConfigsTable, eventModesTable, eventsTable, libraryAssetsTable,
   libraryAssetTemplatesTable, libraryAssetVariantsTable, modesTable,
 } from '../db/schema.ts';
 import {
@@ -145,35 +145,25 @@ export async function applyPhotoLayoutTemplate(eventIdValue: unknown, eventModeI
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new ServiceError(400, 'expectedRevision invalida');
   const [current] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, eventModeId)).limit(1);
   const currentConfig = parseJson(current?.config) || defaultMirrorConfig();
-  let [resource] = await db.select().from(eventResourcesTable).where(and(
-    eq(eventResourcesTable.eventId, eventId), eq(eventResourcesTable.eventModeId, eventModeId),
-    eq(eventResourcesTable.libraryAssetId, assetId), eq(eventResourcesTable.purpose, 'template'), eq(eventResourcesTable.isActive, true),
-  )).limit(1);
-  let createdResourceId: EntityId | null = null;
-  if (!resource) {
-    const now = new Date();
-    const result = await db.insert(eventResourcesTable).values({ eventId, libraryAssetId: assetId, eventModeId, purpose: 'template', placement: 'layout', config: null, orderIndex: 0, isActive: true, createdAt: now, updatedAt: now });
-    createdResourceId = BigInt(result[0]?.insertId || 0);
-    [resource] = await db.select().from(eventResourcesTable).where(eq(eventResourcesTable.id, createdResourceId)).limit(1);
-  }
-  const previousTemplateResourceId = currentConfig.resources?.layoutTemplateResourceId;
+  const requestedSource = String(input?.source || '');
+  const source = requestedSource === 'favorite' || requestedSource === 'global'
+    ? requestedSource
+    : asset.ownerType === 'viralco' ? 'global' : 'favorite';
   const nextConfig = {
     ...currentConfig,
     layout: {
       ...currentConfig.layout,
       format: template.baseFormat, output: template.output, shotCount: template.shotCount,
       order: template.order, slots: template.slots, duplicateStrip: template.duplicateStrip,
+      presetOrigin: {
+        libraryAssetId: serializeId(assetId),
+        name: asset.name,
+        source,
+        contentHash: record.contentHash,
+      },
     },
-    resources: { ...currentConfig.resources, layoutTemplateResourceId: serializeId(resource.id) },
+    resources: { ...currentConfig.resources },
   };
-  try {
-    const saved = await saveMirrorConfig(eventId, eventModeId, { expectedRevision, schemaVersion: 1, config: nextConfig }, requester);
-    if (previousTemplateResourceId && String(previousTemplateResourceId) !== String(resource.id)) {
-      await db.update(eventResourcesTable).set({ isActive: false, updatedAt: new Date() }).where(eq(eventResourcesTable.id, parseEntityId(previousTemplateResourceId, 'ID de recurso')));
-    }
-    return { config: saved, appliedTemplate: { assetId: serializeId(assetId), eventResourceId: serializeId(resource.id), contentHash: record.contentHash } };
-  } catch (error) {
-    if (createdResourceId) await db.delete(eventResourcesTable).where(eq(eventResourcesTable.id, createdResourceId));
-    throw error;
-  }
+  const saved = await saveMirrorConfig(eventId, eventModeId, { expectedRevision, schemaVersion: 1, config: nextConfig }, requester);
+  return { config: saved, appliedTemplate: { assetId: serializeId(assetId), eventResourceId: null, contentHash: record.contentHash } };
 }

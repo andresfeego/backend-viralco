@@ -11,6 +11,7 @@ import {
   setAccountLibraryFavorite,
 } from '../services/library.service.ts';
 import { createPhotoLayoutTemplate, getPhotoLayoutTemplate } from '../services/photo-layout-template.service.ts';
+import { createPrintProfile, getPrintProfile } from '../services/print-profile.service.ts';
 
 function sendError(res: any, error: unknown, fallback: string) {
   sendApiError(res.req, res, error, fallback);
@@ -46,6 +47,21 @@ export async function postAccountPhotoLayoutTemplate(req: any, res: any) {
 export async function getAccountPhotoLayoutTemplate(req: any, res: any) {
   try { res.status(200).json(await getPhotoLayoutTemplate(req.params.libraryAssetId, req.authUser, req.params.accountId)); }
   catch (error) { sendError(res, error, 'No se pudo obtener plantilla'); }
+}
+
+export async function postGlobalPrintProfile(req: any, res: any) {
+  try { res.status(201).json(await createPrintProfile(req.body || {}, req.authUser, { ownerType: 'viralco' })); }
+  catch (error) { sendError(res, error, 'No se pudo crear perfil de impresion global'); }
+}
+
+export async function postAccountPrintProfile(req: any, res: any) {
+  try { res.status(201).json(await createPrintProfile(req.body || {}, req.authUser, { ownerType: 'account', accountId: BigInt(String(req.params.accountId)) })); }
+  catch (error) { sendError(res, error, 'No se pudo crear perfil de impresion'); }
+}
+
+export async function getAccountPrintProfile(req: any, res: any) {
+  try { res.status(200).json(await getPrintProfile(req.params.libraryAssetId, req.authUser, req.params.accountId)); }
+  catch (error) { sendError(res, error, 'No se pudo obtener perfil de impresion'); }
 }
 
 export async function postGlobalLibraryImageUpload(req: any, res: any) {

@@ -1,10 +1,10 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { app } from '../src/server.ts';
 import { db } from '../src/db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, libraryAssetEventTypesTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, libraryAssetEventTypesTable, libraryAssetTemplatesTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
 import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
 
@@ -28,6 +28,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     await db.delete(eventsTable);
     await db.delete(accountLibraryTable);
     await db.delete(libraryAssetVariantsTable);
+    await db.delete(libraryAssetTemplatesTable);
     await db.delete(libraryAssetEventTypesTable);
     await db.delete(libraryAssetsTable);
     await db.delete(subscriptionModesTable);
@@ -179,6 +180,55 @@ run('auth, accounts, subscriptions and events integration', () => {
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ name: 'Sin Subs', slug: 'sin-subs', eventTypeSlug: 'boda', startDate: '2026-10-01', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
     expect(event.status).toBe(403);
+  });
+
+  it('applies a photo layout preset without an event resource and publishes after its source is archived', async () => {
+    const [eventRow] = await db.select().from(eventsTable).where(eq(eventsTable.accountId, BigInt(accountId))).limit(1);
+    const [eventModeRow] = await db.select().from(eventModesTable).where(and(eq(eventModesTable.eventId, eventRow.id), eq(eventModesTable.isActive, true))).limit(1);
+    const now = new Date();
+    const template = {
+      schemaVersion: 1, kind: 'mirror-photo-layout', baseFormat: 'personalizar-5x15',
+      output: { width: 2000, height: 2960 }, shotCount: 2, order: [1, 2], duplicateStrip: false,
+      slots: [
+        { slotId: 'slot-1', photoNumber: 1, x: 10, y: 10, width: 80, height: 35, rotation: 0 },
+        { slotId: 'slot-2', photoNumber: 2, x: 10, y: 55, width: 80, height: 35, rotation: 0 },
+      ],
+    };
+    const inserted = await db.insert(libraryAssetsTable).values({
+      ownerType: 'viralco', ownerAccountId: null, sourceAssetId: null, name: 'Preset independiente', type: 'template', motionType: null,
+      appliesToAllEventTypes: true, storageKey: 'viralco/library/test/preset.json', fileUrl: 'https://assets.test/preset.json', previewUrl: null,
+      mimeType: 'application/vnd.kaptura.photo-layout+json', sizeBytes: 100n, tags: null,
+      metadata: { mirrorCompatible: true, templateKind: 'mirror-photo-layout', contentHash: 'preset-hash' },
+      status: 'active', createdBy: BigInt(superLogin.body.user.id), createdAt: now, updatedAt: now,
+    });
+    const assetId = BigInt(inserted[0].insertId);
+    await db.insert(libraryAssetTemplatesTable).values({
+      libraryAssetId: assetId, schemaVersion: 1, kind: 'mirror-photo-layout', config: template,
+      contentHash: 'preset-hash', previewRendererVersion: 1, createdAt: now, updatedAt: now,
+    });
+
+    const applied = await request(app).post(`/api/events/${eventRow.id}/modes/${eventModeRow.id}/layout-templates/${assetId}/apply`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ expectedRevision: 0, source: 'favorite' });
+    expect(applied.status).toBe(200);
+    expect(applied.body.config.config.layout).toMatchObject({ shotCount: 2, order: [1, 2], presetOrigin: { libraryAssetId: String(assetId), name: 'Preset independiente', source: 'favorite', contentHash: 'preset-hash' } });
+    expect(applied.body.config.config.resources.layoutTemplateResourceId).toBeNull();
+    expect(applied.body.appliedTemplate.eventResourceId).toBeNull();
+    const templateResources = await db.select().from(eventResourcesTable).where(and(eq(eventResourcesTable.eventId, eventRow.id), eq(eventResourcesTable.purpose, 'template')));
+    expect(templateResources).toHaveLength(0);
+
+    await db.update(libraryAssetsTable).set({ status: 'archived', updatedAt: new Date() }).where(eq(libraryAssetsTable.id, assetId));
+    const validation = await request(app).post(`/api/events/${eventRow.id}/modes/${eventModeRow.id}/config/validate`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ schemaVersion: 1, config: applied.body.config.config, publish: true });
+    expect(validation.status).toBe(200);
+    expect(validation.body.valid).toBe(true);
+    expect(validation.body.errors).not.toContainEqual(expect.objectContaining({ code: 'FRAME_REQUIRED' }));
+
+    const published = await request(app).post(`/api/events/${eventRow.id}/modes/${eventModeRow.id}/config/publish`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ expectedRevision: applied.body.config.revision });
+    expect(published.status).toBe(201);
   });
 
   it('lets an account administrator delete an event without history', async () => {
@@ -364,6 +414,22 @@ run('auth, accounts, subscriptions and events integration', () => {
       .send({ config: invalidLayoutConfig });
     expect(invalidLayout.body.valid).toBe(false);
     expect(invalidLayout.body.errors.some((entry: any) => entry.code === 'SHOT_ORDER_INVALID')).toBe(true);
+
+    const missingStageAnimationConfig = structuredClone(draft.body.config.config);
+    missingStageAnimationConfig.experience.animationEnabledByStage.start = true;
+    const missingStageAnimation = await request(app).post(`${configPath}/validate`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ config: missingStageAnimationConfig });
+    expect(missingStageAnimation.status).toBe(200);
+    expect(missingStageAnimation.body.errors).toContainEqual(expect.objectContaining({
+      path: 'experience.animationEnabledByStage.start',
+      code: 'ANIMATION_STAGE_RESOURCE_REQUIRED',
+    }));
+
+    const disabledAnimations = await request(app).post(`${configPath}/validate`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ config: draft.body.config.config });
+    expect(disabledAnimations.body.errors.some((entry: any) => entry.code === 'ANIMATION_STAGE_RESOURCE_REQUIRED')).toBe(false);
 
     const saved = await request(app).put(configPath)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)

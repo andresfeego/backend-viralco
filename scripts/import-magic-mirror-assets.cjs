@@ -267,6 +267,9 @@ async function importItem(item) {
   };
   if (existing && r2Original) {
     const currentMetadata = typeof existing.metadata === 'string' ? JSON.parse(existing.metadata) : existing.metadata || {};
+    const requiredFontPreviewVersion = mimeType.startsWith('font/')
+      ? (await import('../src/lib/font-preview.mjs')).FONT_PREVIEW_RENDERER_VERSION
+      : null;
     const restoredMetadata = await restoreOriginalMetadataFromR2(originalKey, item, mimeType, currentMetadata);
     if (!dryRun) await db('library_assets').where({ id: existing.id }).update({
       owner_type: 'viralco', owner_account_id: null, category_id: category.id, name: item.name,
@@ -277,7 +280,9 @@ async function importItem(item) {
     });
     await syncEventTypes(existing.id, item.eventTypes || []);
     const restored = await restorePreviewVariantsFromR2(existing.id, item, mimeType);
-    if (restored.complete) {
+    const previewsAreCurrent = !requiredFontPreviewVersion
+      || Number(currentMetadata.previewRendererVersion || 0) >= Number(requiredFontPreviewVersion);
+    if (restored.complete && previewsAreCurrent) {
       if (targetAccountId && !dryRun) {
         const now = new Date();
         await db('account_library').insert({ account_id: targetAccountId, library_asset_id: existing.id, added_by: createdBy, created_at: now, updated_at: now }).onConflict(['account_id', 'library_asset_id']).ignore();

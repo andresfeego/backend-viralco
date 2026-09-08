@@ -17,7 +17,8 @@ El comando, en este orden:
 3. ejecuta los seeds;
 4. garantiza el Super Admin y la cuenta `viralco_platform`;
 5. restaura el catalogo global desde R2;
-6. crea o repara las plantillas globales de layout.
+6. crea o repara las plantillas globales de layout;
+7. crea o repara los perfiles globales de impresion.
 
 Las pruebas de integracion ejecutan el mismo bootstrap despues de su reseed.
 
@@ -33,6 +34,6 @@ No se define una cuenta destino: los recursos `owner_type=viralco` son globales 
 
 ## Operacion idempotente
 
-`npm run db:bootstrap-global-library` puede ejecutarse en cualquier momento. Busca cada recurso por `metadata.manifestId`, conserva IDs y favoritos existentes, repone filas y variantes faltantes y no vuelve a subir objetos completos. El estado esperado actual es de 38 recursos: 32 medios y 6 plantillas configurables.
+`npm run db:bootstrap-global-library` puede ejecutarse en cualquier momento. Busca cada recurso por `metadata.manifestId`, conserva IDs y favoritos existentes, repone filas y variantes faltantes y no vuelve a subir objetos completos. El estado esperado actual es de 40 recursos: 33 medios, 6 plantillas configurables y 1 perfil de impresion.
 
 Un reset completo elimina favoritos y asociaciones pertenecientes a cuentas, porque son datos transaccionales de la base. No elimina los objetos globales de R2 y el catalogo ViralCo vuelve a quedar disponible automaticamente.

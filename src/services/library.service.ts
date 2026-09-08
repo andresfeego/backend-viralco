@@ -8,11 +8,12 @@ import { accountLibraryTable, eventTypesTable, libraryAssetCategoriesTable, libr
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { renderFontPreviewVariants } from '../lib/font-preview.mjs';
+import { renderVideoPreviewVariants } from '../lib/video-preview.mjs';
 import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVariantKey, createPresignedLibraryUpload, createPresignedReadUrl, getR2ObjectBuffer, LIBRARY_PURPOSES, putR2Object, r2PublicUrl } from '../r2.ts';
 import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
 
 const OWNER_TYPES = new Set(['viralco', 'account']);
-const ASSET_TYPES = new Set(['frame', 'sticker', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'branding', 'animation', 'font', 'other']);
+const ASSET_TYPES = new Set(['frame', 'sticker', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'print_profile', 'branding', 'animation', 'font', 'other']);
 const ASSET_STATUSES = new Set(['draft', 'active', 'archived']);
 const STICKER_MOTION_TYPES = new Set(['static', 'animated']);
 const PROCESSABLE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'image/avif']);
@@ -191,14 +192,19 @@ export async function createLibraryAsset(input: any, requester: any, owner: { ow
   const storageKey = assertLibraryKeyScope({ key: input?.key || input?.storageKey, ownerType: owner.ownerType, accountId: owner.accountId ? serializeId(owner.accountId)! : undefined });
   if (!name) throw new ServiceError(400, 'Nombre de recurso requerido');
   if (!ASSET_TYPES.has(type)) throw new ServiceError(400, 'Tipo de recurso invalido');
-  if (type === 'template') throw new ServiceError(400, 'Las plantillas de diseno aun no estan disponibles');
+  if (type === 'template' || type === 'print_profile') throw new ServiceError(400, 'Este recurso requiere su formulario de configuracion');
   if (!ASSET_STATUSES.has(status)) throw new ServiceError(400, 'Estado de recurso invalido');
   const motionType = normalizeMotionType(type, mimeType, input?.motionType);
   const eventTypeScope = await normalizeEventTypeScope(input);
-  const fontPreview = type === 'font' ? await renderFontPreviewVariants(await getR2ObjectBuffer(storageKey)) : null;
+  const sourceBuffer = type === 'font' || type === 'animation' ? await getR2ObjectBuffer(storageKey) : null;
+  const generatedPreview = type === 'font'
+    ? await renderFontPreviewVariants(sourceBuffer)
+    : type === 'animation' && mimeType.startsWith('video/')
+      ? await renderVideoPreviewVariants(sourceBuffer)
+      : null;
   const metadata = {
     ...(input?.metadata && typeof input.metadata === 'object' ? input.metadata : {}),
-    ...(fontPreview?.metadata || {}),
+    ...(generatedPreview?.metadata || {}),
   };
   const now = new Date();
   const assetId = await db.transaction(async (tx) => {
@@ -219,13 +225,13 @@ export async function createLibraryAsset(input: any, requester: any, owner: { ow
     await replaceAssetEventTypes(id, eventTypeScope.eventTypeIds, tx);
     return id;
   });
-  if (fontPreview) {
+  if (generatedPreview) {
     try {
-      const savedVariants = await Promise.all(fontPreview.variants.map(async (variant: any) => {
+      const savedVariants = await Promise.all(generatedPreview.variants.map(async (variant: any) => {
         const key = buildLibraryAssetVariantKey({
           scope: owner.ownerType === 'viralco' ? 'viralco' : 'account',
           accountId: owner.accountId ? serializeId(owner.accountId)! : undefined,
-          purpose: 'font',
+          purpose: type,
           assetId: serializeId(assetId)!,
           variant: variant.variant,
         });
@@ -247,7 +253,7 @@ export async function createLibraryAsset(input: any, requester: any, owner: { ow
       if (thumb) await db.update(libraryAssetsTable).set({ previewUrl: thumb.fileUrl, updatedAt: new Date() }).where(eq(libraryAssetsTable.id, assetId));
     } catch (error) {
       await db.delete(libraryAssetsTable).where(eq(libraryAssetsTable.id, assetId));
-      throw new ServiceError(400, 'No se pudo procesar la fuente seleccionada', { cause: error });
+      throw new ServiceError(400, type === 'font' ? 'No se pudo procesar la fuente seleccionada' : 'No se pudo procesar el video seleccionado', { cause: error });
     }
   }
   const asset = await findAsset(assetId);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MIRROR_FORMATS,
+  detachLegacyPhotoLayoutTemplate,
   defaultMirrorConfig,
   validateMirrorConfigLocally,
 } from '../src/domain/magic-mirror-config.ts';
@@ -86,6 +87,16 @@ describe('MirrorConfigV1 local validation', () => {
     const config = validConfig();
     config.layout.textLayers = [{ id: 'custom-title', text: 'Bienvenidos', x: 10, y: 8, width: 80, size: 24, color: '#111827', font: 'resource', fontResourceId: '45' }];
     expect(validateMirrorConfigLocally(config).valid).toBe(true);
+  });
+
+  it('accepts ordered rotated text layers and rejects invalid rotation', () => {
+    const config = validConfig();
+    config.layout.textLayers = [
+      { id: 'custom-title', text: 'Bienvenidos', x: 10, y: 8, width: 80, size: 24, color: '#111827', font: 'arial', rotation: 20, order: 0 },
+    ];
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.layout.textLayers[0].rotation = 181;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'TEXT_ROTATION_INVALID' }));
   });
 
   it('validates sticker geometry', () => {
@@ -178,18 +189,54 @@ describe('MirrorConfigV1 local validation', () => {
     expect(result.errors.map((entry) => entry.code)).toEqual(expect.arrayContaining(['LENS_INVALID', 'QUALITY_INVALID', 'ANIMATION_STAGE_INVALID']));
   });
 
-  it('requires a frame or template only for publication', () => {
+  it('accepts capture times from 0 to 20 seconds and rejects values outside that range', () => {
     const config = validConfig();
-    expect(validateMirrorConfigLocally(config, false).valid).toBe(true);
-    expect(validateMirrorConfigLocally(config, true).errors).toContainEqual(expect.objectContaining({ code: 'FRAME_REQUIRED' }));
+    config.capture.firstCountdownSeconds = 0;
+    config.capture.nextCountdownSeconds = 20;
+    config.capture.reviewSeconds = 0;
+    expect(validateMirrorConfigLocally(config).valid).toBe(true);
+    config.capture.reviewSeconds = 21;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'CAPTURE_TIME_INVALID' }));
   });
 
-  it('keeps unavailable capabilities disabled', () => {
+  it('publishes a structurally valid layout without a template or frame', () => {
+    const config = validConfig();
+    expect(validateMirrorConfigLocally(config, false).valid).toBe(true);
+    expect(validateMirrorConfigLocally(config, true).valid).toBe(true);
+  });
+
+  it('treats preset origin as non-binding publication metadata', () => {
+    const config = validConfig();
+    (config.layout as any).presetOrigin = { libraryAssetId: 'missing', name: 'Preset eliminado', source: 'global', contentHash: 'old-hash' };
+    expect(validateMirrorConfigLocally(config, true).valid).toBe(true);
+  });
+
+  it('detaches a legacy template reference without changing its geometry', () => {
+    const config = validConfig();
+    config.layout.slots[0] = { ...config.layout.slots[0], x: 19, y: 23, rotation: 11 } as any;
+    config.resources.layoutTemplateResourceId = '88';
+    const detached = detachLegacyPhotoLayoutTemplate(config);
+    expect(detached.layout).toEqual(config.layout);
+    expect(detached.resources.layoutTemplateResourceId).toBeNull();
+    expect(config.resources.layoutTemplateResourceId).toBe('88');
+  });
+
+  it('keeps GIF and background removal unavailable while allowing configured printing', () => {
     const config = validConfig();
     config.gif.enabled = true;
     config.backgroundRemoval.enabled = true;
     config.print.enabled = true;
+    config.print.profileResourceId = '41';
+    config.delivery.print = true;
     const result = validateMirrorConfigLocally(config);
-    expect(result.errors.filter((entry) => entry.code === 'CAPABILITY_UNAVAILABLE')).toHaveLength(3);
+    expect(result.errors.filter((entry) => entry.code === 'CAPABILITY_UNAVAILABLE')).toHaveLength(2);
+    expect(result.errors).not.toContainEqual(expect.objectContaining({ code: 'PRINT_PROFILE_REQUIRED' }));
+  });
+
+  it('requires a profile when physical printing is enabled', () => {
+    const config = validConfig();
+    config.print.enabled = true;
+    config.delivery.print = true;
+    expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'PRINT_PROFILE_REQUIRED' }));
   });
 });

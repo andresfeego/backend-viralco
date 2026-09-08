@@ -2,7 +2,7 @@ import * as fontkit from 'fontkit';
 import sharp from 'sharp';
 
 const PREVIEW_TEXT = 'Tu evento';
-const PREVIEW_RENDERER_VERSION = 4;
+export const FONT_PREVIEW_RENDERER_VERSION = 5;
 const PREVIEW_SIZES = [
   { variant: 'thumb', size: 160 },
   { variant: 'card', size: 512 },
@@ -44,7 +44,7 @@ export async function renderFontPreviewVariants(buffer) {
       fullName: font.fullName || font.familyName,
       postscriptName: font.postscriptName || null,
       previewText: PREVIEW_TEXT,
-      previewRendererVersion: PREVIEW_RENDERER_VERSION,
+      previewRendererVersion: FONT_PREVIEW_RENDERER_VERSION,
     },
     variants,
   };

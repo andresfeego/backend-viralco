@@ -24,7 +24,7 @@ No incluye marcos, fondos, stickers, textos, captura, experiencia, entrega ni ru
 - `POST /api/admin/library/layout-templates`: crea plantilla global; solo Super Admin.
 - `POST /api/accounts/:accountId/library/layout-templates`: crea plantilla privada; owner, administrador o Super Admin.
 - `GET /api/accounts/:accountId/library/:libraryAssetId/layout-template`: consulta el contrato.
-- `POST /api/events/:eventId/modes/:eventModeId/layout-templates/:assetId/apply`: aplica atómicamente al borrador usando `expectedRevision`.
+- `POST /api/events/:eventId/modes/:eventModeId/layout-templates/:assetId/apply`: compatibilidad para clientes anteriores; copia la geometría y guarda con `expectedRevision`, sin crear un `event_resource`.
 
 Los uploads de archivos continúan rechazando `template`: una plantilla solo nace del editor visual y no de una imagen.
 Las nuevas plantillas globales o de cuenta deben usar `baseFormat=personalizar-5x15` y salida `2000 × 2960`; la lectura de recursos históricos con otras dimensiones continúa disponible.
@@ -40,10 +40,12 @@ Las plantillas creadas por una cuenta se enlazan inmediatamente a `account_libra
 - `layout.stickerLayers`: máximo diez capas con `resourceId`, posición, tamaño, rotación y orden. El recurso asociado debe ser `sticker/static`.
 - `layout.textLayers[].fontResourceId`: fuente de biblioteca independiente para cada capa; `resources.fontResourceId` continúa como respaldo histórico.
 
-La validación y el manifiesto de publicación incluyen estos IDs de recursos. La composición respeta el orden fondo, tomas, marco, stickers y textos.
+La validación y el manifiesto de publicación incluyen los IDs de marcos, fondos, stickers y fuentes usados en tiempo de ejecución, pero nunca el ID del preset de plantilla. La composición respeta el orden fondo, tomas, marco, stickers y textos.
 
-Al modificar por primera vez la geometría de una plantilla aplicada, el borrador elimina `layoutTemplateResourceId`, conserva los slots y pasa a personalizado. La asociación anterior se elimina únicamente después de guardar correctamente; las publicaciones históricas permanecen sin cambios.
+Una plantilla es únicamente un preset. El cliente actual consulta su JSON, copia formato, dimensiones, tomas, orden, slots, rotaciones y tira duplicada al borrador local, y no guarda ni crea un `event_resource`. `layout.presetOrigin` conserva como metadata informativa el ID del asset, nombre, origen Global/Favoritos y hash; no se valida como recurso ni entra al manifiesto de lanzamiento.
+
+La primera modificación manual limpia `presetOrigin` sin alterar la geometría y muestra el diseño como personalizado. Un borrador histórico con `resources.layoutTemplateResourceId` conserva sus slots y, en el siguiente guardado, el backend limpia la referencia y desactiva su antigua asociación. `FRAME_REQUIRED` fue eliminado: un layout estructuralmente válido publica sin plantilla ni marco. Las publicaciones históricas permanecen sin cambios.
 
 ## Compatibilidad
 
-`resources.templateResourceId` continúa representando plantillas-imagen históricas de publicaciones inmutables. El recurso configurable nuevo se registra como `resources.layoutTemplateResourceId`; el borrador conserva una copia completa de la geometría para no depender de cambios posteriores del catálogo.
+`resources.templateResourceId` continúa representando plantillas-imagen históricas de publicaciones inmutables. `resources.layoutTemplateResourceId` es solo una referencia heredada que se desacopla al guardar. El borrador y las nuevas publicaciones consumen directamente la geometría copiada, por lo que eliminar o desactivar el preset original no invalida el evento.

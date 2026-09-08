@@ -4,7 +4,7 @@
 
 Este documento es la fuente de verdad para la entrega progresiva del modo `espejo`. Define alcance, dependencias, estado y criterio de cierre de las fases A–H. Los detalles técnicos ya implementados de A y B permanecen en [`espejo-magico-fases-a-b.md`](./espejo-magico-fases-a-b.md).
 
-Ultima actualizacion: 2026-09-03.
+Ultima actualizacion: 2026-09-07.
 
 ## Estados
 
@@ -124,7 +124,7 @@ El catalogo global completo se repone automaticamente despues de un reset o rese
 - JSON original en R2 y payload consultable en `library_asset_templates`.
 - Miniaturas fieles `thumb/card` generadas desde la misma geometría.
 - Creación global por Super Admin y privada por owner/administrador.
-- Aplicación con revisión optimista que preserva el resto del borrador.
+- Aplicación como preset local independiente: copia la geometría, preserva el resto del borrador y no adjudica recursos al evento.
 - Seis plantillas globales iniciales e importador idempotente; `Personalizado` permanece como entrada especial del editor y no como asset.
 
 ## Fase C — Configurador visual de Espejo
@@ -143,6 +143,7 @@ El contrato de implementacion vive en [`espejo-magico-fase-c.md`](./espejo-magic
 - Tiempos de captura y revisión.
 - Flash, lente, calidad, originales y modo itinerante.
 - Configuración de experiencia, entrega y runtime del operador.
+- Perfiles de impresion favoritos, deteccion local de impresora y ajustes editables por evento, segun [`espejo-magico-perfiles-impresion.md`](./espejo-magico-perfiles-impresion.md).
 - Preview de composición en claro y oscuro.
 - Guardar, validar y publicar.
 - Estados dirty, saving, saved, invalid, conflict y published.

@@ -13,6 +13,7 @@ export const LIBRARY_PURPOSES = new Set([
   'logo',
   'background',
   'template',
+  'print_profile',
   'animation',
   'sticker',
   'font',
@@ -89,7 +90,7 @@ export function assertLibraryUploadInput(input: any) {
   const sizeBytes = Number(input?.sizeBytes);
 
   if (!LIBRARY_PURPOSES.has(purpose)) throw new ServiceError(400, 'Proposito de upload invalido');
-  if (purpose === 'template') throw new ServiceError(400, 'Las plantillas de diseno aun no estan disponibles');
+  if (purpose === 'template' || purpose === 'print_profile') throw new ServiceError(400, 'Este recurso se crea desde su formulario de configuracion');
   assertContentTypeForPurpose(purpose, contentType);
   const maxBytes = VIDEO_TYPES.has(contentType) ? MAX_VIDEO_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > maxBytes) throw new ServiceError(400, 'Tamano de archivo invalido');

@@ -1,9 +1,12 @@
 export const MIRROR_SCHEMA_VERSION = 1;
 
 export const MIRROR_ANIMATION_STAGES = [
-  'beforeCountdown', 'afterCapture', 'countdown', 'pickMusic', 'beforeSignature',
+  'start', 'beforeCountdown', 'afterCapture', 'countdown', 'pickMusic', 'beforeSignature',
   'processing', 'afterProcessing', 'sessionEnd',
 ] as const;
+
+export const MIRROR_CONFIGURABLE_ANIMATION_STAGES = ['start', 'beforeCountdown', 'afterCapture', 'processing'] as const;
+const CONFIGURABLE_ANIMATION_STAGES = new Set<string>(MIRROR_CONFIGURABLE_ANIMATION_STAGES);
 
 export const MIRROR_FORMATS = {
   digital: { width: 1200, height: 1500, minShots: 1, maxShots: 1, duplicateStrip: false },
@@ -26,10 +29,17 @@ const MIRROR_LAYER_MIN_VISIBLE_RATIO = 0.1;
 
 export type MirrorValidationIssue = { path: string; code: string; message: string };
 
+export function detachLegacyPhotoLayoutTemplate(config: any) {
+  return {
+    ...config,
+    resources: { ...(config?.resources || {}), layoutTemplateResourceId: null },
+  };
+}
+
 export const defaultMirrorConfig = () => ({
   layout: {
     format: 'digital', output: { width: 1200, height: 1500 }, shotCount: 1, order: [1],
-    slots: [{ slotId: 'slot-1', photoNumber: 1, x: 7, y: 17, width: 86, height: 66 }], duplicateStrip: false, backgroundLayers: [], frameLayers: [], textLayers: [], stickerLayers: [],
+    slots: [{ slotId: 'slot-1', photoNumber: 1, x: 7, y: 17, width: 86, height: 66 }], duplicateStrip: false, presetOrigin: null, backgroundLayers: [], frameLayers: [], textLayers: [], stickerLayers: [],
   },
   resources: {
     templateResourceId: null, layoutTemplateResourceId: null, frameResourceId: null, gifOverlayResourceId: null,
@@ -39,10 +49,13 @@ export const defaultMirrorConfig = () => ({
     firstCountdownSeconds: 5, nextCountdownSeconds: 5, reviewSeconds: 5,
     flashEnabled: true, lens: 'wide', quality: 'high', preserveOriginals: true, roamingMode: false,
   },
-  experience: { style: 'video-vertical', virtualAssistantEnabled: true, randomByStage: {} },
+  experience: {
+    style: 'video-vertical', virtualAssistantEnabled: true, randomByStage: {},
+    animationEnabledByStage: { start: false, beforeCountdown: false, afterCapture: false, processing: false },
+  },
   gif: { enabled: false, captureCount: 2, delayMs: 300, reverse: false, size: 'vertical-720' },
   backgroundRemoval: { enabled: false, mode: 'automatic', finalBackground: 'transparent', edgeSoftness: 'medium', keepShadow: true },
-  print: { enabled: false, paperWidthCm: 10, paperHeightCm: 14.8, orientation: 'portrait', dpi: 300, marginCm: 0, copies: 1, fit: 'contain', twoPerPage: false },
+  print: { enabled: false, profileResourceId: null, paperWidthCm: 10, paperHeightCm: 14.8, orientation: 'portrait', dpi: 300, marginCm: 0, copies: 1, fit: 'contain', twoPerPage: false },
   delivery: { qr: true, share: true, download: true, print: false },
   runtime: { autoResetSeconds: 15, operatorMenuEnabled: true },
 });
@@ -138,8 +151,11 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
 
   const textLayers = Array.isArray(layout.textLayers) ? layout.textLayers : [];
   if (!Array.isArray(layout.textLayers)) errors.push(issue('layout.textLayers', 'TEXT_LAYERS_INVALID', 'Las capas de texto deben ser un arreglo'));
+  if (textLayers.length > 10) errors.push(issue('layout.textLayers', 'TEXT_LAYER_LIMIT_EXCEEDED', 'Puedes agregar hasta 10 textos'));
   const textLayerIds = textLayers.map((layer: any) => String(layer?.id || ''));
   if (new Set(textLayerIds).size !== textLayerIds.length) errors.push(issue('layout.textLayers', 'TEXT_LAYER_DUPLICATE', 'Cada capa de texto debe aparecer una sola vez'));
+  const textLayerOrders = textLayers.map((layer: any, index: number) => layer?.order ?? index);
+  if (new Set(textLayerOrders).size !== textLayerOrders.length || textLayerOrders.some((order: any) => !boundedInteger(order, 0, Math.max(0, textLayers.length - 1)))) errors.push(issue('layout.textLayers', 'TEXT_LAYER_ORDER_INVALID', 'El orden de los textos no es valido'));
   textLayers.forEach((layer: any, index: number) => {
     const path = `layout.textLayers.${index}`;
     const layerId = String(layer?.id || '');
@@ -147,6 +163,7 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
     if (typeof layer?.text !== 'string' || layer.text.length > 160) errors.push(issue(`${path}.text`, 'TEXT_INVALID', 'El texto debe tener maximo 160 caracteres'));
     if (!finiteInRange(layer?.x, 0, 100) || !finiteInRange(layer?.y, 0, 100) || !finiteInRange(layer?.width, 1, 100) || Number(layer.x) + Number(layer.width) > 100) errors.push(issue(path, 'TEXT_BOUNDS_INVALID', 'La capa de texto debe permanecer dentro del lienzo'));
     if (!boundedInteger(layer?.size, 8, 54)) errors.push(issue(`${path}.size`, 'TEXT_SIZE_INVALID', 'El tamano debe estar entre 8 y 54'));
+    if (!finiteInRange(layer?.rotation ?? 0, -180, 180)) errors.push(issue(`${path}.rotation`, 'TEXT_ROTATION_INVALID', 'La rotacion debe estar entre -180 y 180 grados'));
     if (!/^#[0-9a-f]{6}$/i.test(String(layer?.color || ''))) errors.push(issue(`${path}.color`, 'TEXT_COLOR_INVALID', 'El color debe usar formato hexadecimal'));
     if (!TEXT_FONTS.has(String(layer?.font || ''))) errors.push(issue(`${path}.font`, 'TEXT_FONT_INVALID', 'La fuente no esta soportada'));
     if (layer?.fontResourceId !== undefined && layer?.fontResourceId !== null && !/^\d+$/.test(String(layer.fontResourceId))) errors.push(issue(`${path}.fontResourceId`, 'FONT_RESOURCE_ID_INVALID', 'La fuente seleccionada no es valida'));
@@ -179,7 +196,7 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
 
   const capture = config.capture || {};
   ['firstCountdownSeconds', 'nextCountdownSeconds', 'reviewSeconds'].forEach((key) => {
-    if (!boundedInteger(capture[key], 1, 30)) errors.push(issue(`capture.${key}`, 'CAPTURE_TIME_INVALID', 'El tiempo debe estar entre 1 y 30 segundos'));
+    if (!boundedInteger(capture[key], 0, 20)) errors.push(issue(`capture.${key}`, 'CAPTURE_TIME_INVALID', 'El tiempo debe estar entre 0 y 20 segundos'));
   });
   if (!LENSES.has(String(capture.lens || ''))) errors.push(issue('capture.lens', 'LENS_INVALID', 'La lente seleccionada no esta soportada'));
   if (!QUALITIES.has(String(capture.quality || ''))) errors.push(issue('capture.quality', 'QUALITY_INVALID', 'La calidad seleccionada no esta soportada'));
@@ -195,17 +212,31 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
     if (!ANIMATION_STAGE_SET.has(stage)) errors.push(issue(`experience.randomByStage.${stage}`, 'ANIMATION_STAGE_INVALID', 'La etapa de animacion no esta soportada'));
     if (typeof enabled !== 'boolean') errors.push(issue(`experience.randomByStage.${stage}`, 'BOOLEAN_REQUIRED', 'El valor debe ser booleano'));
   });
+  if (experience.animationEnabledByStage !== undefined && (typeof experience.animationEnabledByStage !== 'object' || Array.isArray(experience.animationEnabledByStage))) {
+    errors.push(issue('experience.animationEnabledByStage', 'ANIMATION_ENABLED_STAGES_INVALID', 'Las etapas activas deben ser un objeto'));
+  } else Object.entries(experience.animationEnabledByStage || {}).forEach(([stage, enabled]) => {
+    if (!CONFIGURABLE_ANIMATION_STAGES.has(stage)) errors.push(issue(`experience.animationEnabledByStage.${stage}`, 'ANIMATION_STAGE_INVALID', 'La etapa de animacion no es configurable'));
+    if (typeof enabled !== 'boolean') errors.push(issue(`experience.animationEnabledByStage.${stage}`, 'BOOLEAN_REQUIRED', 'El valor debe ser booleano'));
+  });
 
   if (config.gif?.enabled) errors.push(issue('gif.enabled', 'CAPABILITY_UNAVAILABLE', 'La generacion GIF aun no esta disponible'));
   if (config.backgroundRemoval?.enabled) errors.push(issue('backgroundRemoval.enabled', 'CAPABILITY_UNAVAILABLE', 'La eliminacion de fondo aun no esta disponible'));
   const print = config.print || {};
-  if (Number(print.paperWidthCm) !== 10 || Number(print.paperHeightCm) !== 14.8 || print.orientation !== 'portrait' || Number(print.dpi) !== 300 || Number(print.copies) !== 1 || print.fit !== 'contain') errors.push(issue('print', 'PRINT_FORMAT_INVALID', 'La impresion debe usar 10 x 14.8 cm, retrato, 300 DPI, una copia y ajuste contain'));
-  if (config.print?.enabled || config.delivery?.print) errors.push(issue('print.enabled', 'CAPABILITY_UNAVAILABLE', 'La impresion fisica aun no esta disponible'));
+  if (typeof print.enabled !== 'boolean') errors.push(issue('print.enabled', 'BOOLEAN_REQUIRED', 'El estado de impresion debe ser booleano'));
+  if (print.profileResourceId !== null && print.profileResourceId !== undefined && !/^\d+$/.test(String(print.profileResourceId))) errors.push(issue('print.profileResourceId', 'PRINT_PROFILE_INVALID', 'El perfil de impresion no es valido'));
+  if (print.enabled && !print.profileResourceId) errors.push(issue('print.profileResourceId', 'PRINT_PROFILE_REQUIRED', 'Selecciona un perfil de impresion'));
+  if (!finiteInRange(print.paperWidthCm, 2, 200) || !finiteInRange(print.paperHeightCm, 2, 200)) errors.push(issue('print.paper', 'PRINT_PAPER_INVALID', 'Las medidas de papel no son validas'));
+  if (!['portrait', 'landscape'].includes(String(print.orientation))) errors.push(issue('print.orientation', 'PRINT_ORIENTATION_INVALID', 'La orientacion no es valida'));
+  if (!boundedInteger(print.dpi, 72, 1200)) errors.push(issue('print.dpi', 'PRINT_DPI_INVALID', 'La resolucion debe estar entre 72 y 1200 DPI'));
+  if (!finiteInRange(print.marginCm, 0, Math.min(Number(print.paperWidthCm), Number(print.paperHeightCm)) / 3)) errors.push(issue('print.marginCm', 'PRINT_MARGIN_INVALID', 'El margen de impresion no es valido'));
+  if (!boundedInteger(print.copies, 1, 100)) errors.push(issue('print.copies', 'PRINT_COPIES_INVALID', 'Las copias deben estar entre 1 y 100'));
+  if (!['contain', 'cover'].includes(String(print.fit))) errors.push(issue('print.fit', 'PRINT_FIT_INVALID', 'El ajuste de impresion no es valido'));
+  if (typeof print.twoPerPage !== 'boolean') errors.push(issue('print.twoPerPage', 'BOOLEAN_REQUIRED', 'La opcion dos por pagina debe ser booleana'));
+  if (Boolean(config.delivery?.print) !== Boolean(print.enabled)) errors.push(issue('delivery.print', 'PRINT_DELIVERY_MISMATCH', 'La entrega impresa debe coincidir con el estado de impresion'));
   ['qr', 'share', 'download', 'print'].forEach((key) => {
     if (typeof config.delivery?.[key] !== 'boolean') errors.push(issue(`delivery.${key}`, 'BOOLEAN_REQUIRED', 'El valor de entrega debe ser booleano'));
   });
   if (!boundedInteger(config.runtime?.autoResetSeconds, 5, 300)) errors.push(issue('runtime.autoResetSeconds', 'AUTO_RESET_INVALID', 'El reinicio debe estar entre 5 y 300 segundos'));
   if (typeof config.runtime?.operatorMenuEnabled !== 'boolean') errors.push(issue('runtime.operatorMenuEnabled', 'BOOLEAN_REQUIRED', 'El menu del operador debe ser booleano'));
-  if (publish && !resources.layoutTemplateResourceId && !resources.templateResourceId && !resources.frameResourceId && !frameLayers.length) errors.push(issue('resources', 'FRAME_REQUIRED', 'Selecciona una plantilla o marco antes de publicar'));
   return { valid: errors.length === 0, errors, warnings };
 }

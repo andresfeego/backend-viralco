@@ -34,6 +34,7 @@ const CATEGORIES = [
   { slug: 'animations', name: 'Animaciones', description: 'Videos y secuencias de experiencia' },
   { slug: 'gifs', name: 'GIFs', description: 'Overlays y recursos animados' },
   { slug: 'fonts', name: 'Fuentes', description: 'Tipografias reutilizables' },
+  { slug: 'print-profiles', name: 'Perfiles de impresion', description: 'Configuraciones reutilizables de impresora y papel' },
 ];
 
 /** @param {import('knex').Knex} knex */

@@ -1,0 +1,32 @@
+[
+  {
+    "manifestId": "print-profile-canon-selphy-cp1500-postcard-v1",
+    "name": "Canon SELPHY CP1500 · Postal 100 × 148 mm",
+    "profile": {
+      "schemaVersion": 1,
+      "kind": "print-profile",
+      "manufacturer": "Canon",
+      "model": "SELPHY CP1500",
+      "paper": {
+        "name": "Postal",
+        "widthMm": 100,
+        "heightMm": 148,
+        "orientation": "portrait",
+        "borderless": true,
+        "safeMarginMm": 1.8
+      },
+      "output": {
+        "dpi": 300,
+        "fit": "contain",
+        "defaultCopies": 1,
+        "maxCopies": 20,
+        "supportsTwoPerPage": true,
+        "colorMode": "color"
+      },
+      "compatibility": {
+        "transports": ["airprint"],
+        "platforms": ["ios"]
+      }
+    }
+  }
+]

@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { postGlobalLibraryAsset, postGlobalLibraryImageUpload, postGlobalLibraryUpload, postGlobalPhotoLayoutTemplate } from '../controllers/library.controller.ts';
+import { postGlobalLibraryAsset, postGlobalLibraryImageUpload, postGlobalLibraryUpload, postGlobalPhotoLayoutTemplate, postGlobalPrintProfile } from '../controllers/library.controller.ts';
 import {
   createAdmin,
   activate,
@@ -29,6 +29,7 @@ router.post('/library/assets/uploads', requireAuth, requireRole('super_admin'), 
 router.post('/library/image-upload', requireAuth, requireRole('super_admin'), uploadImage.single('file'), postGlobalLibraryImageUpload);
 router.post('/library/assets', requireAuth, requireRole('super_admin'), postGlobalLibraryAsset);
 router.post('/library/layout-templates', requireAuth, requireRole('super_admin'), postGlobalPhotoLayoutTemplate);
+router.post('/library/print-profiles', requireAuth, requireRole('super_admin'), postGlobalPrintProfile);
 router.patch(
   '/users/:id/activate',
   requireAuth,

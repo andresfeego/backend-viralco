@@ -12,7 +12,7 @@ import {
 } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
-import { validateMirrorConfigLocally as validateMirrorConfigContract } from '../domain/magic-mirror-config.ts';
+import { detachLegacyPhotoLayoutTemplate, MIRROR_CONFIGURABLE_ANIMATION_STAGES, validateMirrorConfigLocally as validateMirrorConfigContract } from '../domain/magic-mirror-config.ts';
 import { assertAccountAccess } from './account-access.service.ts';
 import { getLibraryAssetWithVariants } from './library.service.ts';
 import { assertSubscriptionIncludesModes } from './subscriptions.service.ts';
@@ -20,6 +20,7 @@ import { assertSubscriptionIncludesModes } from './subscriptions.service.ts';
 export const MIRROR_SCHEMA_VERSION = 1;
 
 export const MIRROR_ANIMATION_STAGES = [
+  'start',
   'beforeCountdown',
   'afterCapture',
   'countdown',
@@ -57,6 +58,7 @@ export const defaultMirrorConfig = () => ({
     order: [1],
     slots: [{ slotId: 'slot-1', photoNumber: 1, x: 7, y: 17, width: 86, height: 66 }],
     duplicateStrip: false,
+    presetOrigin: null,
     backgroundLayers: [],
     frameLayers: [],
     textLayers: [],
@@ -82,10 +84,13 @@ export const defaultMirrorConfig = () => ({
     preserveOriginals: true,
     roamingMode: false,
   },
-  experience: { style: 'video-vertical', virtualAssistantEnabled: true, randomByStage: {} },
+  experience: {
+    style: 'video-vertical', virtualAssistantEnabled: true, randomByStage: {},
+    animationEnabledByStage: { start: false, beforeCountdown: false, afterCapture: false, processing: false },
+  },
   gif: { enabled: false, captureCount: 2, delayMs: 300, reverse: false, size: 'vertical-720' },
   backgroundRemoval: { enabled: false, mode: 'automatic', finalBackground: 'transparent', edgeSoftness: 'medium', keepShadow: true },
-  print: { enabled: false, paperWidthCm: 10, paperHeightCm: 14.8, orientation: 'portrait', dpi: 300, marginCm: 0, copies: 1, fit: 'contain', twoPerPage: false },
+  print: { enabled: false, profileResourceId: null, paperWidthCm: 10, paperHeightCm: 14.8, orientation: 'portrait', dpi: 300, marginCm: 0, copies: 1, fit: 'contain', twoPerPage: false },
   delivery: { qr: true, share: true, download: true, print: false },
   runtime: { autoResetSeconds: 15, operatorMenuEnabled: true },
 });
@@ -203,8 +208,11 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
 
   const textLayers = Array.isArray(layout.textLayers) ? layout.textLayers : [];
   if (!Array.isArray(layout.textLayers)) errors.push(issue('layout.textLayers', 'TEXT_LAYERS_INVALID', 'Las capas de texto deben ser un arreglo'));
+  if (textLayers.length > 10) errors.push(issue('layout.textLayers', 'TEXT_LAYER_LIMIT_EXCEEDED', 'Puedes agregar hasta 10 textos'));
   const textLayerIds = textLayers.map((layer: any) => String(layer?.id || ''));
   if (new Set(textLayerIds).size !== textLayerIds.length) errors.push(issue('layout.textLayers', 'TEXT_LAYER_DUPLICATE', 'Cada capa de texto debe aparecer una sola vez'));
+  const textLayerOrders = textLayers.map((layer: any, index: number) => layer?.order ?? index);
+  if (new Set(textLayerOrders).size !== textLayerOrders.length || textLayerOrders.some((order: any) => !boundedInteger(order, 0, Math.max(0, textLayers.length - 1)))) errors.push(issue('layout.textLayers', 'TEXT_LAYER_ORDER_INVALID', 'El orden de los textos no es valido'));
   textLayers.forEach((layer: any, index: number) => {
     const path = `layout.textLayers.${index}`;
     if (!MIRROR_TEXT_LAYER_IDS.has(String(layer?.id || ''))) errors.push(issue(`${path}.id`, 'TEXT_LAYER_ID_INVALID', 'La capa de texto no esta soportada'));
@@ -213,6 +221,7 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
       errors.push(issue(path, 'TEXT_BOUNDS_INVALID', 'La capa de texto debe permanecer dentro del lienzo'));
     }
     if (!boundedInteger(layer?.size, 8, 54)) errors.push(issue(`${path}.size`, 'TEXT_SIZE_INVALID', 'El tamano debe estar entre 8 y 54'));
+    if (!finiteInRange(layer?.rotation ?? 0, -180, 180)) errors.push(issue(`${path}.rotation`, 'TEXT_ROTATION_INVALID', 'La rotacion debe estar entre -180 y 180 grados'));
     if (!/^#[0-9a-f]{6}$/i.test(String(layer?.color || ''))) errors.push(issue(`${path}.color`, 'TEXT_COLOR_INVALID', 'El color debe usar formato hexadecimal'));
     if (!MIRROR_TEXT_FONTS.has(String(layer?.font || ''))) errors.push(issue(`${path}.font`, 'TEXT_FONT_INVALID', 'La fuente no esta soportada'));
   });
@@ -227,7 +236,7 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
 
   const capture = config.capture || {};
   ['firstCountdownSeconds', 'nextCountdownSeconds', 'reviewSeconds'].forEach((key) => {
-    if (!boundedInteger(capture?.[key], 1, 30)) errors.push(issue(`capture.${key}`, 'CAPTURE_TIME_INVALID', 'El tiempo debe estar entre 1 y 30 segundos'));
+    if (!boundedInteger(capture?.[key], 0, 20)) errors.push(issue(`capture.${key}`, 'CAPTURE_TIME_INVALID', 'El tiempo debe estar entre 0 y 20 segundos'));
   });
   if (!MIRROR_LENSES.has(String(capture.lens || ''))) errors.push(issue('capture.lens', 'LENS_INVALID', 'La lente seleccionada no esta soportada'));
   if (!MIRROR_QUALITIES.has(String(capture.quality || ''))) errors.push(issue('capture.quality', 'QUALITY_INVALID', 'La calidad seleccionada no esta soportada'));
@@ -246,22 +255,33 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
       if (!isBoolean(enabled)) errors.push(issue(`experience.randomByStage.${stage}`, 'BOOLEAN_REQUIRED', 'El valor debe ser booleano'));
     });
   }
+  const configurableAnimationStages = new Set<string>(MIRROR_CONFIGURABLE_ANIMATION_STAGES);
+  if (experience.animationEnabledByStage !== undefined && (typeof experience.animationEnabledByStage !== 'object' || Array.isArray(experience.animationEnabledByStage))) {
+    errors.push(issue('experience.animationEnabledByStage', 'ANIMATION_ENABLED_STAGES_INVALID', 'Las etapas activas deben ser un objeto'));
+  } else Object.entries(experience.animationEnabledByStage || {}).forEach(([stage, enabled]) => {
+    if (!configurableAnimationStages.has(stage)) errors.push(issue(`experience.animationEnabledByStage.${stage}`, 'ANIMATION_STAGE_INVALID', 'La etapa de animacion no es configurable'));
+    if (!isBoolean(enabled)) errors.push(issue(`experience.animationEnabledByStage.${stage}`, 'BOOLEAN_REQUIRED', 'El valor debe ser booleano'));
+  });
 
   if (config.gif?.enabled) errors.push(issue('gif.enabled', 'CAPABILITY_UNAVAILABLE', 'La generacion GIF aun no esta disponible'));
   if (config.backgroundRemoval?.enabled) errors.push(issue('backgroundRemoval.enabled', 'CAPABILITY_UNAVAILABLE', 'La eliminacion de fondo aun no esta disponible'));
   const print = config.print || {};
-  if (Number(print.paperWidthCm) !== 10 || Number(print.paperHeightCm) !== 14.8 || print.orientation !== 'portrait' || Number(print.dpi) !== 300 || Number(print.copies) !== 1 || print.fit !== 'contain') {
-    errors.push(issue('print', 'PRINT_FORMAT_INVALID', 'La impresion debe usar 10 x 14.8 cm, retrato, 300 DPI, una copia y ajuste contain'));
-  }
-  if (config.print?.enabled || config.delivery?.print) errors.push(issue('print.enabled', 'CAPABILITY_UNAVAILABLE', 'La impresion fisica aun no esta disponible'));
+  if (typeof print.enabled !== 'boolean') errors.push(issue('print.enabled', 'BOOLEAN_REQUIRED', 'El estado de impresion debe ser booleano'));
+  if (print.profileResourceId !== null && print.profileResourceId !== undefined && !/^\d+$/.test(String(print.profileResourceId))) errors.push(issue('print.profileResourceId', 'PRINT_PROFILE_INVALID', 'El perfil de impresion no es valido'));
+  if (print.enabled && !print.profileResourceId) errors.push(issue('print.profileResourceId', 'PRINT_PROFILE_REQUIRED', 'Selecciona un perfil de impresion'));
+  if (!finiteInRange(print.paperWidthCm, 2, 200) || !finiteInRange(print.paperHeightCm, 2, 200)) errors.push(issue('print.paper', 'PRINT_PAPER_INVALID', 'Las medidas de papel no son validas'));
+  if (!['portrait', 'landscape'].includes(String(print.orientation))) errors.push(issue('print.orientation', 'PRINT_ORIENTATION_INVALID', 'La orientacion no es valida'));
+  if (!boundedInteger(print.dpi, 72, 1200)) errors.push(issue('print.dpi', 'PRINT_DPI_INVALID', 'La resolucion debe estar entre 72 y 1200 DPI'));
+  if (!finiteInRange(print.marginCm, 0, Math.min(Number(print.paperWidthCm), Number(print.paperHeightCm)) / 3)) errors.push(issue('print.marginCm', 'PRINT_MARGIN_INVALID', 'El margen de impresion no es valido'));
+  if (!boundedInteger(print.copies, 1, 100)) errors.push(issue('print.copies', 'PRINT_COPIES_INVALID', 'Las copias deben estar entre 1 y 100'));
+  if (!['contain', 'cover'].includes(String(print.fit))) errors.push(issue('print.fit', 'PRINT_FIT_INVALID', 'El ajuste de impresion no es valido'));
+  if (typeof print.twoPerPage !== 'boolean') errors.push(issue('print.twoPerPage', 'BOOLEAN_REQUIRED', 'La opcion dos por pagina debe ser booleana'));
+  if (Boolean(config.delivery?.print) !== Boolean(print.enabled)) errors.push(issue('delivery.print', 'PRINT_DELIVERY_MISMATCH', 'La entrega impresa debe coincidir con el estado de impresion'));
   ['qr', 'share', 'download', 'print'].forEach((key) => {
     if (!isBoolean(config.delivery?.[key])) errors.push(issue(`delivery.${key}`, 'BOOLEAN_REQUIRED', 'El valor de entrega debe ser booleano'));
   });
   if (!boundedInteger(config.runtime?.autoResetSeconds, 5, 300)) errors.push(issue('runtime.autoResetSeconds', 'AUTO_RESET_INVALID', 'El reinicio debe estar entre 5 y 300 segundos'));
   if (!isBoolean(config.runtime?.operatorMenuEnabled)) errors.push(issue('runtime.operatorMenuEnabled', 'BOOLEAN_REQUIRED', 'El menu del operador debe ser booleano'));
-  if (publish && !resources.templateResourceId && !resources.layoutTemplateResourceId && !resources.frameResourceId && !frameLayers.length) {
-    errors.push(issue('resources', 'FRAME_REQUIRED', 'Selecciona una plantilla o marco antes de publicar'));
-  }
   return { valid: errors.length === 0, errors, warnings };
 }
 
@@ -273,12 +293,12 @@ function resourceIds(config: any) {
   const layerFontIds = Array.isArray(config?.layout?.textLayers) ? config.layout.textLayers.map((layer: any) => layer?.fontResourceId) : [];
   return [...new Set([
     resources.templateResourceId,
-    resources.layoutTemplateResourceId,
     resources.frameResourceId,
     resources.gifOverlayResourceId,
     resources.startScreenResourceId,
     resources.backgroundResourceId,
     resources.fontResourceId,
+    config?.print?.profileResourceId,
     ...frameIds,
     ...backgroundIds,
     ...stickerIds,
@@ -293,7 +313,6 @@ function expectedResource(config: any, id: string) {
   const backgroundLayers = Array.isArray(config?.layout?.backgroundLayers) ? config.layout.backgroundLayers : [];
   const stickerLayers = Array.isArray(config?.layout?.stickerLayers) ? config.layout.stickerLayers : [];
   const textLayers = Array.isArray(config?.layout?.textLayers) ? config.layout.textLayers : [];
-  if (String(resources.layoutTemplateResourceId || '') === id) return { purpose: 'template', family: 'template' };
   if (String(resources.templateResourceId || '') === id) return { purpose: 'template', family: 'image' };
   if (String(resources.frameResourceId || '') === id) return { purpose: 'frame', family: 'image' };
   if (frameLayers.some((layer: any) => String(layer?.resourceId || '') === id)) return { purpose: 'frame', family: 'image' };
@@ -302,6 +321,7 @@ function expectedResource(config: any, id: string) {
   if (String(resources.startScreenResourceId || '') === id) return { purpose: 'start_screen', family: 'visual' };
   if (String(resources.backgroundResourceId || '') === id) return { purpose: 'background', family: 'image' };
   if (String(resources.fontResourceId || '') === id) return { purpose: 'font', family: 'font' };
+  if (String(config?.print?.profileResourceId || '') === id) return { purpose: 'print_profile', family: 'print_profile' };
   if (stickerLayers.some((layer: any) => String(layer?.resourceId || '') === id)) return { purpose: 'sticker', family: 'image', motion: 'static' };
   if (textLayers.some((layer: any) => String(layer?.fontResourceId || '') === id)) return { purpose: 'font', family: 'font' };
   return { purpose: 'animation', family: 'video' };
@@ -313,6 +333,7 @@ function mimeMatchesFamily(mimeType: unknown, family: string) {
   if (family === 'video') return mime.startsWith('video/');
   if (family === 'font') return mime.startsWith('font/') || ['application/font-sfnt', 'application/vnd.ms-opentype'].includes(mime);
   if (family === 'template') return mime === 'application/vnd.kaptura.photo-layout+json';
+  if (family === 'print_profile') return mime === 'application/vnd.kaptura.print-profile+json';
   if (family === 'visual') return mime.startsWith('image/') || mime.startsWith('video/');
   return false;
 }
@@ -367,6 +388,23 @@ async function validateResources(context: any, config: any) {
       errors.push(issue(`resources.${id}`, 'ANIMATION_PLACEMENT_INVALID', 'La animacion debe estar asociada a una etapa valida'));
     }
   }
+  const configuredAnimationIds = new Set(
+    (Array.isArray(config?.resources?.animationResourceIds) ? config.resources.animationResourceIds : []).map(String),
+  );
+  const assignedAnimationStages = new Set(
+    rows
+      .filter(({ resource }) => configuredAnimationIds.has(serializeId(resource.id)) && resource.purpose === 'animation')
+      .map(({ resource }) => String(resource.placement || '')),
+  );
+  for (const stage of MIRROR_CONFIGURABLE_ANIMATION_STAGES) {
+    if (config?.experience?.animationEnabledByStage?.[stage] === true && !assignedAnimationStages.has(stage)) {
+      errors.push(issue(
+        `experience.animationEnabledByStage.${stage}`,
+        'ANIMATION_STAGE_RESOURCE_REQUIRED',
+        'Selecciona una animacion para la etapa activa',
+      ));
+    }
+  }
   const manifest = await Promise.all(rows.map(async ({ resource, asset }) => ({
     eventResourceId: serializeId(resource.id), purpose: resource.purpose, placement: resource.placement,
     asset: await getLibraryAssetWithVariants(asset.id),
@@ -408,21 +446,33 @@ export async function getMirrorConfig(eventIdValue: unknown, eventModeIdValue: u
 export async function saveMirrorConfig(eventIdValue: unknown, eventModeIdValue: unknown, input: any, requester: any) {
   const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'events.update');
   if (Number(input?.schemaVersion) !== MIRROR_SCHEMA_VERSION) throw new ServiceError(400, 'Version de configuracion no soportada');
-  const validation = await fullValidation(context, input?.config, false);
+  const legacyTemplateResourceId = input?.config?.resources?.layoutTemplateResourceId;
+  const canonicalConfig = detachLegacyPhotoLayoutTemplate(input?.config);
+  const validation = await fullValidation(context, canonicalConfig, false);
   if (!validation.valid) throw new ServiceError(400, JSON.stringify({ code: 'CONFIG_INVALID', errors: validation.errors }));
-  if (resourceIds(input?.config).length) await assertAccountAccess(context.event.accountId, requester, 'write', 'events.resources.manage');
+  if (resourceIds(canonicalConfig).length) await assertAccountAccess(context.event.accountId, requester, 'write', 'events.resources.manage');
   const expectedRevision = Number(input?.expectedRevision);
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new ServiceError(400, 'expectedRevision invalida');
   const [current] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);
   const currentRevision = current?.revision || 0;
   if (currentRevision !== expectedRevision) throw new ServiceError(409, JSON.stringify({ code: 'CONFIG_REVISION_CONFLICT', currentRevision }));
   const now = new Date();
-  if (!current) {
-    await db.insert(eventModeConfigsTable).values({ eventModeId: context.eventModeId, schemaVersion: MIRROR_SCHEMA_VERSION, revision: 1, config: input.config, updatedBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
-  } else {
-    const result: any = await db.update(eventModeConfigsTable).set({ revision: current.revision + 1, config: input.config, updatedBy: parseEntityId(requester.id), updatedAt: now }).where(and(eq(eventModeConfigsTable.id, current.id), eq(eventModeConfigsTable.revision, expectedRevision)));
-    if (!Number(result?.[0]?.affectedRows || 0)) throw new ServiceError(409, JSON.stringify({ code: 'CONFIG_REVISION_CONFLICT', currentRevision: current.revision }));
-  }
+  await db.transaction(async (tx) => {
+    if (!current) {
+      await tx.insert(eventModeConfigsTable).values({ eventModeId: context.eventModeId, schemaVersion: MIRROR_SCHEMA_VERSION, revision: 1, config: canonicalConfig, updatedBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
+    } else {
+      const result: any = await tx.update(eventModeConfigsTable).set({ revision: current.revision + 1, config: canonicalConfig, updatedBy: parseEntityId(requester.id), updatedAt: now }).where(and(eq(eventModeConfigsTable.id, current.id), eq(eventModeConfigsTable.revision, expectedRevision)));
+      if (!Number(result?.[0]?.affectedRows || 0)) throw new ServiceError(409, JSON.stringify({ code: 'CONFIG_REVISION_CONFLICT', currentRevision: current.revision }));
+    }
+    if (/^\d+$/.test(String(legacyTemplateResourceId || ''))) {
+      await tx.update(eventResourcesTable).set({ isActive: false, updatedAt: now }).where(and(
+        eq(eventResourcesTable.id, parseEntityId(legacyTemplateResourceId, 'ID de recurso')),
+        eq(eventResourcesTable.eventId, context.eventId),
+        eq(eventResourcesTable.eventModeId, context.eventModeId),
+        eq(eventResourcesTable.purpose, 'template'),
+      ));
+    }
+  });
   return getMirrorConfig(eventIdValue, eventModeIdValue, requester);
 }
 
