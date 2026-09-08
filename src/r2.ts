@@ -29,6 +29,8 @@ const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
 const SIGNED_UPLOAD_EXPIRES_IN = 300;
 const SIGNED_READ_EXPIRES_IN = 900;
+const RUNTIME_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png']);
+const MAX_RUNTIME_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function requiredEnv(name: string) {
   const value = String(process.env[name] || '').trim();
@@ -185,4 +187,50 @@ export async function createPresignedReadUrl(key: string) {
     Key: normalizedKey,
   });
   return getSignedUrl(r2, command, { expiresIn: SIGNED_READ_EXPIRES_IN });
+}
+
+export function assertRuntimeUploadInput(input: any) {
+  const contentType = String(input?.contentType || '').trim().toLowerCase();
+  const sizeBytes = Number(input?.sizeBytes);
+  const sha256 = String(input?.sha256 || '').trim().toLowerCase();
+  if (!RUNTIME_UPLOAD_TYPES.has(contentType)) throw new ServiceError(400, 'Formato de captura no permitido');
+  if (!Number.isInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > MAX_RUNTIME_UPLOAD_BYTES) throw new ServiceError(400, 'Tamano de captura invalido');
+  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new ServiceError(400, 'Hash de captura invalido');
+  return { contentType, sizeBytes, sha256 };
+}
+
+export function buildMirrorRuntimeKey(input: { accountId: string; eventId: string; sessionId: string; kind: 'captures' | 'deliverables'; clientId: string; contentType: string }) {
+  const extension = input.contentType === 'image/png' ? 'png' : 'jpg';
+  return `accounts/${input.accountId}/events/${input.eventId}/mirror/${input.sessionId}/${input.kind}/${input.clientId}.${extension}`;
+}
+
+export async function createPresignedRuntimeUpload(input: { key: string; contentType: string; sha256: string }) {
+  const command = new PutObjectCommand({
+    Bucket: requiredEnv('R2_BUCKET_NAME'),
+    Key: input.key,
+    ContentType: input.contentType,
+    Metadata: { sha256: input.sha256 },
+  });
+  const uploadUrl = await getSignedUrl(r2, command, { expiresIn: SIGNED_UPLOAD_EXPIRES_IN });
+  return {
+    uploadUrl,
+    method: 'PUT',
+    requiredHeaders: { 'Content-Type': input.contentType, 'x-amz-meta-sha256': input.sha256 },
+    expiresIn: SIGNED_UPLOAD_EXPIRES_IN,
+  };
+}
+
+export async function headR2Object(key: string) {
+  try {
+    const result = await r2.send(new HeadObjectCommand({ Bucket: requiredEnv('R2_BUCKET_NAME'), Key: key }));
+    return {
+      sizeBytes: Number(result.ContentLength || 0),
+      contentType: String(result.ContentType || ''),
+      sha256: String(result.Metadata?.sha256 || '').toLowerCase(),
+    };
+  } catch (error: any) {
+    const status = error?.$metadata?.httpStatusCode;
+    if (status === 404 || error?.name === 'NotFound' || error?.name === 'NoSuchKey') throw new ServiceError(409, 'El archivo aun no existe en almacenamiento');
+    throw error;
+  }
 }

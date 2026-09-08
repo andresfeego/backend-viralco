@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
   eventModeConfigsTable,
@@ -343,7 +343,7 @@ function assetMatchesExpectedPurpose(asset: any, expectedPurpose: string) {
   return expectedPurpose === 'gif_overlay' && asset.type === 'sticker' && asset.motionType === 'animated';
 }
 
-async function getMirrorContext(eventIdValue: unknown, eventModeIdValue: unknown, requester: any, permission: string) {
+export async function getMirrorContext(eventIdValue: unknown, eventModeIdValue: unknown, requester: any, permission: string) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   const eventModeId = parseEntityId(eventModeIdValue, 'ID de modo de evento');
   const [row] = await db.select({ event: eventsTable, eventMode: eventModesTable, mode: modesTable })
@@ -356,6 +356,7 @@ async function getMirrorContext(eventIdValue: unknown, eventModeIdValue: unknown
   await assertAccountAccess(row.event.accountId, requester, permission === 'events.view' || permission === 'capture.operate' ? 'read' : 'write', permission);
   if (row.mode.slug !== 'espejo') throw new ServiceError(400, 'La configuracion solo aplica al modo espejo');
   if (!row.eventMode.isActive) throw new ServiceError(409, 'El modo espejo esta inactivo');
+  if (permission === 'capture.operate' && row.event.status !== 'active') throw new ServiceError(409, JSON.stringify({ code: 'EVENT_NOT_ACTIVE', message: 'Activa el evento antes de lanzarlo' }));
   return { ...row, eventId, eventModeId };
 }
 
@@ -433,7 +434,7 @@ function mapVersion(row: any) {
   return { id: serializeId(row.id), eventModeId: serializeId(row.eventModeId), version: row.version, schemaVersion: row.schemaVersion, config: parseJson(row.config), publishedBy: serializeId(row.publishedBy), publishedAt: row.publishedAt };
 }
 
-function mapSession(row: any) {
+export function mapSession(row: any) {
   return { id: serializeId(row.id), eventModeId: serializeId(row.eventModeId), configVersionId: serializeId(row.configVersionId), clientSessionId: row.clientSessionId, deviceInstallationId: row.deviceInstallationId, startedBy: serializeId(row.startedBy), status: row.status, startedAt: row.startedAt, endedAt: row.endedAt, lastHeartbeatAt: row.lastHeartbeatAt, failureCode: row.failureCode, metadata: parseJson(row.metadata), updatedAt: row.updatedAt };
 }
 
@@ -517,19 +518,62 @@ export async function startMirrorSession(eventIdValue: unknown, eventModeIdValue
   const deviceInstallationId = String(input?.deviceInstallationId || '').trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientSessionId)) throw new ServiceError(400, 'clientSessionId debe ser UUID');
   if (!/^[A-Za-z0-9_.-]{3,120}$/.test(deviceInstallationId)) throw new ServiceError(400, 'deviceInstallationId invalido');
-  const [existing] = await db.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.clientSessionId, clientSessionId)).limit(1);
-  if (existing) {
-    if (existing.eventModeId !== context.eventModeId) throw new ServiceError(409, 'clientSessionId pertenece a otro modo');
-    const published = await getPublishedMirrorConfig(eventIdValue, eventModeIdValue, requester);
-    return { session: mapSession(existing), ...published };
-  }
   const [configRow] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);
   if (!configRow?.publishedVersionId) throw new ServiceError(409, 'Publica la configuracion antes de lanzar');
   const published = await getPublishedMirrorConfig(eventIdValue, eventModeIdValue, requester);
   const now = new Date();
-  const result = await db.insert(eventModeSessionsTable).values({ eventModeId: context.eventModeId, configVersionId: configRow.publishedVersionId, clientSessionId, deviceInstallationId, startedBy: parseEntityId(requester.id), status: 'preparing', startedAt: now, lastHeartbeatAt: now, metadata: input?.metadata && typeof input.metadata === 'object' ? input.metadata : null, createdAt: now, updatedAt: now });
-  const [session] = await db.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.id, BigInt(result[0]?.insertId || 0))).limit(1);
+  const session = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM event_modes WHERE id = ${context.eventModeId} FOR UPDATE`);
+    const [existing] = await tx.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.clientSessionId, clientSessionId)).limit(1);
+    if (existing) {
+      if (existing.eventModeId !== context.eventModeId) throw new ServiceError(409, 'clientSessionId pertenece a otro modo');
+      return existing;
+    }
+    const [active] = await tx.select().from(eventModeSessionsTable).where(and(
+      eq(eventModeSessionsTable.eventModeId, context.eventModeId),
+      inArray(eventModeSessionsTable.status, ['preparing', 'running']),
+    )).orderBy(desc(eventModeSessionsTable.id)).limit(1);
+    if (active) throw new ServiceError(409, JSON.stringify({
+      code: 'MIRROR_SESSION_ALREADY_ACTIVE',
+      message: 'Este modo ya esta lanzado en otro dispositivo',
+      session: mapSession(active),
+    }));
+    const result = await tx.insert(eventModeSessionsTable).values({ eventModeId: context.eventModeId, configVersionId: configRow.publishedVersionId, clientSessionId, deviceInstallationId, startedBy: parseEntityId(requester.id), status: 'preparing', startedAt: now, lastHeartbeatAt: now, metadata: input?.metadata && typeof input.metadata === 'object' ? input.metadata : null, createdAt: now, updatedAt: now });
+    const [created] = await tx.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.id, BigInt(result[0]?.insertId || 0))).limit(1);
+    return created;
+  });
   return { session: mapSession(session), ...published };
+}
+
+export async function getActiveMirrorSession(eventIdValue: unknown, eventModeIdValue: unknown, requester: any) {
+  const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'capture.operate');
+  const [session] = await db.select().from(eventModeSessionsTable).where(and(
+    eq(eventModeSessionsTable.eventModeId, context.eventModeId),
+    inArray(eventModeSessionsTable.status, ['preparing', 'running']),
+  )).orderBy(desc(eventModeSessionsTable.id)).limit(1);
+  if (!session) return { session: null, version: null, manifest: [] };
+  const [version] = await db.select().from(eventModeConfigVersionsTable).where(eq(eventModeConfigVersionsTable.id, session.configVersionId)).limit(1);
+  if (!version) throw new ServiceError(409, 'La publicacion de la sesion ya no esta disponible');
+  const validation = await fullValidation(context, parseJson(version.config), false);
+  return { session: mapSession(session), version: mapVersion(version), manifest: validation.manifest };
+}
+
+export async function getMirrorSessionPackage(eventIdValue: unknown, eventModeIdValue: unknown, sessionIdValue: unknown, requester: any) {
+  const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'capture.operate');
+  const session = await getSessionForContext(context, sessionIdValue);
+  const [version] = await db.select().from(eventModeConfigVersionsTable).where(eq(eventModeConfigVersionsTable.id, session.configVersionId)).limit(1);
+  if (!version) throw new ServiceError(409, 'La publicacion de la sesion ya no esta disponible');
+  const validation = await fullValidation(context, parseJson(version.config), false);
+  return { session: mapSession(session), version: mapVersion(version), manifest: validation.manifest };
+}
+
+export async function forceEndMirrorSession(eventIdValue: unknown, eventModeIdValue: unknown, sessionIdValue: unknown, requester: any) {
+  const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'events.update');
+  const session = await getSessionForContext(context, sessionIdValue);
+  if (['ended', 'failed'].includes(session.status)) return mapSession(session);
+  const now = new Date();
+  await db.update(eventModeSessionsTable).set({ status: 'failed', failureCode: 'FORCED_TAKEOVER', endedAt: now, lastHeartbeatAt: now, updatedAt: now }).where(eq(eventModeSessionsTable.id, session.id));
+  return mapSession({ ...session, status: 'failed', failureCode: 'FORCED_TAKEOVER', endedAt: now, lastHeartbeatAt: now, updatedAt: now });
 }
 
 async function getSessionForContext(context: any, sessionIdValue: unknown) {

@@ -86,7 +86,7 @@ Este documento complementa `viralco.dbml`. El DBML define estructura, llaves y r
 - Una cuenta sin historial se elimina definitivamente. Sus eventos sin historial, membresias, suscripciones, favoritos y assets privados se eliminan; los objetos R2 de esos assets se limpian despues de confirmar la transaccion.
 - Una cuenta con publicaciones o sesiones cambia a `canceled`; sus eventos pasan a `archived` y su historial se conserva.
 - Los assets globales ViralCo y sus objetos R2 nunca se eliminan como consecuencia de borrar una cuenta.
-- Las futuras capturas de la Fase D deberan contarse como historial antes de habilitar su persistencia productiva.
+- Las sesiones, experiencias, tomas y entregables de Espejo son historial operativo. Las eliminaciones de cuenta o evento deben conservarlos y archivar la entidad propietaria.
 
 ## Reglas para pasar de diseno a migraciones
 

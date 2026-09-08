@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import sharp from 'sharp';
 import { app } from '../src/server.ts';
 import { db } from '../src/db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, libraryAssetEventTypesTable, libraryAssetTemplatesTable, libraryAssetVariantsTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, assetEventResourcesTable, assetsTable, deliveriesTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, libraryAssetEventTypesTable, libraryAssetTemplatesTable, libraryAssetVariantsTable, mirrorCaptureRunsTable, mirrorCapturesTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
 import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
 
@@ -20,6 +20,11 @@ run('auth, accounts, subscriptions and events integration', () => {
 
   beforeAll(async () => {
     await db.delete(eventBrandingTable);
+    await db.delete(deliveriesTable);
+    await db.delete(assetEventResourcesTable);
+    await db.delete(assetsTable);
+    await db.delete(mirrorCapturesTable);
+    await db.delete(mirrorCaptureRunsTable);
     await db.delete(eventModeSessionsTable);
     await db.delete(eventModeConfigsTable);
     await db.delete(eventModeConfigVersionsTable);
@@ -449,6 +454,8 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(published.status).toBe(201);
     expect(published.body.version.version).toBe(1);
 
+    await db.update(eventsTable).set({ status: 'active' }).where(eq(eventsTable.id, BigInt(event.body.event.id)));
+
     const sessionInput = { clientSessionId: '7db45da7-41d7-4ea7-9dc0-423bfbcb0bb8', deviceInstallationId: 'ios-test-device' };
     const session = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
@@ -462,10 +469,43 @@ run('auth, accounts, subscriptions and events integration', () => {
       .send(sessionInput);
     expect(repeated.body.session.id).toBe(session.body.session.id);
 
+    const active = await request(app).get(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/active`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(active.status).toBe(200);
+    expect(active.body.session.id).toBe(session.body.session.id);
+
+    const competing = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ clientSessionId: '17b8bd0d-a724-44c9-8e60-f7825b187327', deviceInstallationId: 'other-device' });
+    expect(competing.status).toBe(409);
+    expect(competing.body.error).toBe('MIRROR_SESSION_ALREADY_ACTIVE');
+
     const running = await request(app).patch(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ status: 'running' });
     expect(running.body.session.status).toBe('running');
+
+    const run = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}/runs`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ clientRunId: 'efcfdf1e-5d0e-49a3-a8e6-e3b1704d65e5' });
+    expect(run.status).toBe(201);
+    expect(run.body.run.status).toBe('capturing');
+
+    const runtimeAsset = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}/runs/${run.body.run.id}/assets`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ clientAssetId: '65c4d54d-f17d-4b6b-b682-9980cd57f2be' });
+    expect(runtimeAsset.status).toBe(201);
+    expect(runtimeAsset.body.asset.status).toBe('processing');
+
+    const repeatedAsset = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}/runs/${run.body.run.id}/assets`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ clientAssetId: '65c4d54d-f17d-4b6b-b682-9980cd57f2be' });
+    expect(repeatedAsset.body.asset.id).toBe(runtimeAsset.body.asset.id);
+
+    const pendingDelivery = await request(app).get(`/api/public/assets/${runtimeAsset.body.asset.publicHash}?method=qr`);
+    expect(pendingDelivery.status).toBe(409);
+    const [delivery] = await db.select().from(deliveriesTable).where(eq(deliveriesTable.assetId, BigInt(runtimeAsset.body.asset.id)));
+    expect(delivery).toMatchObject({ method: 'qr', status: 'pending' });
 
     const ended = await request(app).post(`/api/events/${event.body.event.id}/modes/${event.body.event.modes[0].id}/sessions/${session.body.session.id}/end`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)

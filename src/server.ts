@@ -12,6 +12,7 @@ import postRoute from './routes/post.ts';
 import eventsRoute from './routes/events.ts';
 import accountsRoute from './routes/accounts.ts';
 import libraryRoute from './routes/library.ts';
+import publicAssetsRoute from './routes/public-assets.ts';
 
 const app = express();
 export { app };
@@ -32,6 +33,7 @@ app.use('/api/admin', adminRoute);
 app.use('/api/events', eventsRoute);
 app.use('/api/accounts', accountsRoute);
 app.use('/api/library', libraryRoute);
+app.use('/api/public/assets', publicAssetsRoute);
 
 app.use((error: any, req: any, res: any, _next: any) => {
   sendApiError(req, res, error, 'Error interno del servidor');

@@ -24,10 +24,10 @@ Ultima actualizacion: 2026-09-07.
 | B.2 | Taxonomia y filtros de recursos | `COMPLETADA` | Usar la taxonomía como base del catálogo |
 | B.3 | Plantillas de diseño fotográfico | `COMPLETADA` | Reutilizar diseños globales y privados desde el configurador |
 | C | Configurador visual de Espejo | `COMPLETA` | Entregar su publicación al lanzamiento operativo |
-| D | Preparación y lanzamiento operativo | `PAUSADA` | Retomar preflight, caché y control de sesión después de B.2 |
-| E | Runtime de captura Espejo | `PENDIENTE` | Implementar cámara y secuencia de tomas después de D |
-| F | Composición y entregable | `PENDIENTE` | Implementar render final y pipeline del asset |
-| G | Entrega al invitado | `PENDIENTE` | Integrar QR, descarga, compartir y página pública |
+| D | Preparación y lanzamiento operativo | `EN_PROGRESO` | Validar recuperación y exclusión en dispositivos reales |
+| E | Runtime de captura Espejo | `EN_PROGRESO` | Validar cámara, interrupciones y lentes en iOS/Android físicos |
+| F | Composición y entregable | `EN_PROGRESO` | Validar fidelidad y rendimiento de composiciones grandes en dispositivos físicos |
+| G | Entrega al invitado | `EN_PROGRESO` | Validar compartir, galería y QR con dominio público de producción |
 | H | Capacidades avanzadas | `FUERA_DE_ALCANCE_ACTUAL` | Retomar después de estabilizar A–G |
 
 ## Fase A — Contrato, configuración y sesiones backend
@@ -170,12 +170,11 @@ El contrato de implementacion vive en [`espejo-magico-fase-c.md`](./espejo-magic
 
 ## Fase D — Preparación y lanzamiento operativo
 
-Estado: `PAUSADA`.
+Estado: `EN_PROGRESO`.
 
-La infraestructura backend de sesiones está completa; la experiencia mobile todavía está pendiente.
-La experiencia de lanzamiento consumira la publicacion producida por el configurador de la fase C.
+La infraestructura backend y el flujo mobile local-first están implementados. El cierre requiere la matriz de pruebas en dispositivos reales descrita en [`espejo-magico-lanzamiento-runtime.md`](./espejo-magico-lanzamiento-runtime.md).
 
-### Alcance pendiente
+### Alcance implementado
 
 - Home operativo con evento activo y modos disponibles.
 - Selección de la publicación que se ejecutará.
@@ -202,7 +201,7 @@ La experiencia de lanzamiento consumira la publicacion producida por el configur
 
 ## Fase E — Runtime de captura Espejo
 
-Estado: `PENDIENTE`.
+Estado: `EN_PROGRESO`.
 
 ### Alcance
 
@@ -228,7 +227,7 @@ Estado: `PENDIENTE`.
 
 ## Fase F — Composición y entregable
 
-Estado: `PENDIENTE`.
+Estado: `EN_PROGRESO`.
 
 ### Alcance
 
@@ -253,7 +252,7 @@ Estado: `PENDIENTE`.
 
 ## Fase G — Entrega al invitado
 
-Estado: `PENDIENTE`.
+Estado: `EN_PROGRESO`.
 
 ### Alcance
 
@@ -298,10 +297,10 @@ Una capacidad solo puede habilitarse en `MirrorConfigV1` cuando backend, disposi
 ## Orden aprobado de trabajo
 
 1. Mantener B.1, B.2 y C estabilizadas.
-2. Retomar y completar D en mobile y dispositivos reales.
-3. Implementar E.
-4. Implementar F.
-5. Implementar G.
+2. Cerrar la matriz física y de reconexión de D–G.
+3. Estabilizar rendimiento de cámara y composición en iOS/Android.
+4. Configurar y validar el dominio público de entrega.
+5. Cerrar D, E, F y G con evidencia operativa.
 6. Evaluar y priorizar H por capacidad.
 
 ## Regla de actualización

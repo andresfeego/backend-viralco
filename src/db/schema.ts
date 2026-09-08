@@ -1,4 +1,4 @@
-import { bigint, boolean, date, datetime, index, int, json, mysqlEnum, mysqlTable, primaryKey, text, uniqueIndex, varchar, char } from 'drizzle-orm/mysql-core';
+import { bigint, boolean, date, datetime, index, int, json, mysqlEnum, mysqlTable, primaryKey, text, uniqueIndex, varchar } from 'drizzle-orm/mysql-core';
 
 export const postTable = mysqlTable('post', {
   id: int('id', { unsigned: true }).autoincrement().primaryKey(),
@@ -459,21 +459,75 @@ export const eventResourcesTable = mysqlTable(
   (table) => [index('event_resources_event_purpose_order_idx').on(table.eventId, table.purpose, table.orderIndex)]
 );
 
-export const assetsTable = mysqlTable('assets', {
-  id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
-  publicHash: char('public_hash', { length: 25 }).notNull().unique(),
-  eventId: bigint('event_id', { mode: 'bigint', unsigned: true }).notNull(),
-  modeId: bigint('mode_id', { mode: 'bigint', unsigned: true }),
-  type: varchar('type', { length: 32 }).notNull(),
-  status: varchar('status', { length: 32 }).notNull(),
-  fileUrl: varchar('file_url', { length: 2048 }).notNull(),
-  thumbnailUrl: varchar('thumbnail_url', { length: 2048 }),
-  durationSec: int('duration_sec'),
-  sizeBytes: bigint('size_bytes', { mode: 'bigint', unsigned: true }),
-  metadata: json('metadata'),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-});
+export const mirrorCaptureRunsTable = mysqlTable(
+  'mirror_capture_runs',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    eventModeSessionId: bigint('event_mode_session_id', { mode: 'bigint', unsigned: true }).notNull(),
+    clientRunId: varchar('client_run_id', { length: 80 }).notNull().unique(),
+    status: varchar('status', { length: 32 }).notNull().default('capturing'),
+    startedAt: datetime('started_at').notNull(),
+    completedAt: datetime('completed_at'),
+    failureCode: varchar('failure_code', { length: 80 }),
+    metadata: json('metadata'),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [index('mirror_capture_runs_session_status_idx').on(table.eventModeSessionId, table.status)]
+);
+
+export const mirrorCapturesTable = mysqlTable(
+  'mirror_captures',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    captureRunId: bigint('capture_run_id', { mode: 'bigint', unsigned: true }).notNull(),
+    clientCaptureId: varchar('client_capture_id', { length: 80 }).notNull().unique(),
+    photoNumber: int('photo_number', { unsigned: true }).notNull(),
+    attempt: int('attempt', { unsigned: true }).notNull().default(1),
+    status: varchar('status', { length: 32 }).notNull().default('captured'),
+    storageKey: varchar('storage_key', { length: 1024 }).unique(),
+    mimeType: varchar('mime_type', { length: 120 }),
+    sizeBytes: bigint('size_bytes', { mode: 'bigint', unsigned: true }),
+    sha256: varchar('sha256', { length: 64 }),
+    capturedAt: datetime('captured_at').notNull(),
+    uploadedAt: datetime('uploaded_at'),
+    metadata: json('metadata'),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('mirror_captures_run_photo_attempt_uq').on(table.captureRunId, table.photoNumber, table.attempt),
+    index('mirror_captures_run_status_idx').on(table.captureRunId, table.status),
+  ]
+);
+
+export const assetsTable = mysqlTable(
+  'assets',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    publicHash: varchar('public_hash', { length: 25 }).notNull().unique(),
+    clientAssetId: varchar('client_asset_id', { length: 80 }).notNull().unique(),
+    eventId: bigint('event_id', { mode: 'bigint', unsigned: true }).notNull(),
+    eventModeId: bigint('event_mode_id', { mode: 'bigint', unsigned: true }).notNull(),
+    eventModeSessionId: bigint('event_mode_session_id', { mode: 'bigint', unsigned: true }).notNull(),
+    captureRunId: bigint('capture_run_id', { mode: 'bigint', unsigned: true }).notNull(),
+    type: varchar('type', { length: 32 }).notNull().default('photo'),
+    status: varchar('status', { length: 32 }).notNull().default('processing'),
+    storageKey: varchar('storage_key', { length: 1024 }).unique(),
+    fileUrl: varchar('file_url', { length: 2048 }),
+    thumbnailStorageKey: varchar('thumbnail_storage_key', { length: 1024 }),
+    mimeType: varchar('mime_type', { length: 120 }),
+    sizeBytes: bigint('size_bytes', { mode: 'bigint', unsigned: true }),
+    sha256: varchar('sha256', { length: 64 }),
+    metadata: json('metadata'),
+    createdAt: datetime('created_at').notNull(),
+    updatedAt: datetime('updated_at').notNull(),
+  },
+  (table) => [
+    index('assets_event_status_idx').on(table.eventId, table.status),
+    index('assets_session_status_idx').on(table.eventModeSessionId, table.status),
+  ]
+);
 
 export const assetEventResourcesTable = mysqlTable(
   'asset_event_resources',
@@ -485,4 +539,18 @@ export const assetEventResourcesTable = mysqlTable(
     createdAt: datetime('created_at').notNull(),
   },
   (table) => [uniqueIndex('asset_event_resources_asset_resource_uq').on(table.assetId, table.eventResourceId)]
+);
+
+export const deliveriesTable = mysqlTable(
+  'deliveries',
+  {
+    id: bigint('id', { mode: 'bigint', unsigned: true }).autoincrement().primaryKey(),
+    assetId: bigint('asset_id', { mode: 'bigint', unsigned: true }).notNull(),
+    method: varchar('method', { length: 32 }).notNull(),
+    status: varchar('status', { length: 32 }).notNull().default('requested'),
+    deliveredAt: datetime('delivered_at'),
+    metadata: json('metadata'),
+    createdAt: datetime('created_at').notNull(),
+  },
+  (table) => [index('deliveries_asset_method_idx').on(table.assetId, table.method)]
 );

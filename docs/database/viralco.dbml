@@ -280,20 +280,65 @@ Table device_sessions {
   status varchar(32) [not null]
 }
 
-Table assets {
+Table mirror_capture_runs {
   id bigint [pk, increment]
-  public_hash char(25) [not null, unique]
-  event_id bigint [not null, ref: > events.id]
-  mode_id bigint [ref: > modes.id]
-  type varchar(32) [not null]
-  status varchar(32) [not null]
-  file_url varchar(2048) [not null]
-  thumbnail_url varchar(2048)
-  duration_sec int
-  size_bytes bigint
+  event_mode_session_id bigint [not null, ref: > event_mode_sessions.id]
+  client_run_id varchar(80) [not null, unique]
+  status varchar(32) [not null, note: 'capturing | reviewing | processing | processed | synced | failed | abandoned']
+  started_at datetime [not null]
+  completed_at datetime
+  failure_code varchar(80)
   metadata json
   created_at datetime [not null]
   updated_at datetime [not null]
+  indexes { (event_mode_session_id, status) }
+}
+
+Table mirror_captures {
+  id bigint [pk, increment]
+  capture_run_id bigint [not null, ref: > mirror_capture_runs.id]
+  client_capture_id varchar(80) [not null, unique]
+  photo_number int [not null]
+  attempt int [not null]
+  status varchar(32) [not null, note: 'captured | selected | discarded | uploading | synced | failed']
+  storage_key varchar(1024) [unique]
+  mime_type varchar(120)
+  size_bytes bigint
+  sha256 varchar(64)
+  captured_at datetime [not null]
+  uploaded_at datetime
+  metadata json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (capture_run_id, photo_number, attempt) [unique]
+    (capture_run_id, status)
+  }
+}
+
+Table assets {
+  id bigint [pk, increment]
+  public_hash varchar(25) [not null, unique]
+  client_asset_id varchar(80) [not null, unique]
+  event_id bigint [not null, ref: > events.id]
+  event_mode_id bigint [not null, ref: > event_modes.id]
+  event_mode_session_id bigint [not null, ref: > event_mode_sessions.id]
+  capture_run_id bigint [not null, ref: > mirror_capture_runs.id]
+  type varchar(32) [not null, default: 'photo']
+  status varchar(32) [not null, note: 'processing | processed | sync_pending | uploading | synced | failed']
+  storage_key varchar(1024) [unique]
+  file_url varchar(2048)
+  thumbnail_storage_key varchar(1024)
+  mime_type varchar(120)
+  size_bytes bigint
+  sha256 varchar(64)
+  metadata json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+  indexes {
+    (event_id, status)
+    (event_mode_session_id, status)
+  }
 }
 
 Table asset_event_resources {
@@ -305,36 +350,15 @@ Table asset_event_resources {
   indexes { (asset_id, event_resource_id) [unique] }
 }
 
-Table asset_versions {
-  id bigint [pk, increment]
-  asset_id bigint [not null, ref: > assets.id]
-  version int [not null]
-  file_url varchar(2048) [not null]
-  created_at datetime [not null]
-}
-
 Table deliveries {
   id bigint [pk, increment]
   asset_id bigint [not null, ref: > assets.id]
-  method varchar(32) [not null]
-  url varchar(2048)
-  qr_code_url varchar(2048)
+  method varchar(32) [not null, note: 'qr | share | download']
+  status varchar(32) [not null, note: 'requested | pending | delivered | failed']
   delivered_at datetime
-}
-
-Table portal_visits {
-  id bigint [pk, increment]
-  asset_id bigint [not null, ref: > assets.id]
-  ip varchar(64)
-  user_agent varchar(255)
-  visited_at datetime [not null]
-}
-
-Table downloads {
-  id bigint [pk, increment]
-  asset_id bigint [not null, ref: > assets.id]
-  downloaded_at datetime [not null]
-  ip varchar(64)
+  metadata json
+  created_at datetime [not null]
+  indexes { (asset_id, method) }
 }
 
 Table subscription_plans {

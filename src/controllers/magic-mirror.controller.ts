@@ -1,7 +1,10 @@
 import { sendApiError } from '../lib/api-error.ts';
 import {
   endMirrorSession,
+  forceEndMirrorSession,
+  getActiveMirrorSession,
   getMirrorConfig,
+  getMirrorSessionPackage,
   getPublishedMirrorConfig,
   publishMirrorConfig,
   saveMirrorConfig,
@@ -58,4 +61,19 @@ export async function patchSession(req: any, res: any) {
 export async function postEndSession(req: any, res: any) {
   try { res.status(200).json({ session: await endMirrorSession(req.params.id, req.params.eventModeId, req.params.sessionId, req.body || {}, req.authUser) }); }
   catch (error) { sendError(res, error, 'No se pudo finalizar sesion'); }
+}
+
+export async function getActiveSession(req: any, res: any) {
+  try { res.status(200).json(await getActiveMirrorSession(req.params.id, req.params.eventModeId, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo recuperar la sesion'); }
+}
+
+export async function getSessionPackage(req: any, res: any) {
+  try { res.status(200).json(await getMirrorSessionPackage(req.params.id, req.params.eventModeId, req.params.sessionId, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo preparar el paquete del evento'); }
+}
+
+export async function postForceEndSession(req: any, res: any) {
+  try { res.status(200).json({ session: await forceEndMirrorSession(req.params.id, req.params.eventModeId, req.params.sessionId, req.authUser) }); }
+  catch (error) { sendError(res, error, 'No se pudo forzar el cierre de la sesion'); }
 }
