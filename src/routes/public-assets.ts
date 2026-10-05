@@ -1,8 +1,9 @@
 import express from 'express';
-import { getPublicAsset, postPublicDelivery } from '../controllers/mirror-runtime.controller.ts';
+import { getPublicAsset, getPublicAssetInfo, postPublicDelivery } from '../controllers/mirror-runtime.controller.ts';
 
 const router = express.Router();
 router.get('/:publicHash', getPublicAsset);
+router.get('/:publicHash/info', getPublicAssetInfo);
 router.post('/:publicHash/deliveries', postPublicDelivery);
 
 export default router;

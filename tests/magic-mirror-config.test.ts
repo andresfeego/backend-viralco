@@ -10,6 +10,17 @@ function validConfig() {
   return defaultMirrorConfig();
 }
 
+it('accepts shared photo/frame order without changing capture order and rejects malformed order', () => {
+  const config: any = validConfig();
+  config.layout.frameLayers = [{ id: 'frame-40', resourceId: '40', x: 0, y: 0, width: 100, height: 100, rotation: 0, order: 0 }];
+  config.layout.photoFrameOrder = ['frame:frame-40', 'slot:slot-1'];
+  expect(validateMirrorConfigLocally(config).valid).toBe(true);
+  expect(detachLegacyPhotoLayoutTemplate(config).layout.photoFrameOrder).toEqual(config.layout.photoFrameOrder);
+  expect(config.layout.order).toEqual([1]);
+  config.layout.photoFrameOrder = ['slot:slot-1', 'slot:slot-1'];
+  expect(validateMirrorConfigLocally(config).errors).toContainEqual(expect.objectContaining({ code: 'PHOTO_FRAME_ORDER_INVALID' }));
+});
+
 function slots(count: number) {
   const height = 80 / count;
   return Array.from({ length: count }, (_, index) => ({

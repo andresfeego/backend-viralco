@@ -7,6 +7,7 @@ import { db } from '../src/db/index.ts';
 import { accountLibraryTable, accountsTable, accountUsersTable, assetEventResourcesTable, assetsTable, deliveriesTable, eventBrandingTable, eventModeConfigsTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, libraryAssetEventTypesTable, libraryAssetTemplatesTable, libraryAssetVariantsTable, mirrorCaptureRunsTable, mirrorCapturesTable, passwordResetTokensTable, refreshTokensTable, subscriptionModesTable, subscriptionsTable, userRolesTable, usersTable } from '../src/db/schema.ts';
 import { assignGlobalRoleToUser, createUser, findRoleBySlug, findUserByEmail } from '../src/services/user.service.ts';
 import { hashPassword } from '../src/services/crypto.service.ts';
+import { billingDb } from '../src/db/billing.ts';
 
 const run = process.env.RUN_DB_TESTS === '1' ? describe : describe.skip;
 
@@ -19,6 +20,9 @@ run('auth, accounts, subscriptions and events integration', () => {
   let historicalEventId: string;
 
   beforeAll(async () => {
+    if (process.env.DB_NAME !== 'viralco_billing_test') throw new Error('Integration tests require isolated viralco_billing_test');
+    await billingDb('billing_catalog').update({ archived_by: null, archived_at: null });
+    for (const table of ['billing_reviews', 'billing_reports', 'billing_periods', 'billing_orders', 'billing_transitions', 'billing_bank_options', 'billing_settings']) await billingDb(table).delete();
     await db.delete(eventBrandingTable);
     await db.delete(deliveriesTable);
     await db.delete(assetEventResourcesTable);
@@ -65,17 +69,22 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(ownerLogin.body.user.accounts).toEqual([]);
   });
 
-  it('creates a self-service account with owner membership and trialing subscription', async () => {
+  it('creates a self-service account pending payment, without automatic activation', async () => {
     const created = await request(app).post('/api/accounts')
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ slug: 'cuenta_test', name: 'Cuenta Test', phone: '123' });
+      .send({ slug: 'cuenta_test', name: 'Cuenta Test', phone: '123', durationDays: 365, modeSlugs: ['espejo'] });
     expect(created.status).toBe(201);
     expect(typeof created.body.account.id).toBe('string');
-    expect(created.body.account.subscription.status).toBe('trialing');
-    expect(created.body.account.subscription.statusLabel).toBe('Prueba activa');
-    expect(created.body.account.subscription.metadata.simulatedCheckout).toBe(true);
+    expect(created.body.account.subscription.status).toBe('past_due');
+    expect(created.body.account.subscription.metadata.paymentMethod).toBe('bank_transfer');
+    expect(created.body.account.subscription.metadata.billingPreference).toEqual({ durationDays: 365, modeSlugs: ['espejo'] });
+    const billing = await request(app).get(`/api/billing/accounts/${created.body.account.id}`).set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
+    expect(billing.status).toBe(200);
+    expect(billing.body.preference).toEqual({ durationDays: 365, modeSlugs: ['espejo'] });
 
     accountId = created.body.account.id;
+    const mode = await billingDb('modes').where({ slug: 'espejo' }).first();
+    await billingDb('billing_periods').insert({ account_id: accountId, source: 'test_fixture', services: JSON.stringify([{ modeId: String(mode.id), slug: 'espejo', name: 'Espejo' }]), starts_at: new Date(Date.now() - 1000), ends_at: new Date(Date.now() + 86400000) });
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
     expect(me.body.accounts[0].role.slug).toBe('owner');
   });
@@ -92,9 +101,11 @@ run('auth, accounts, subscriptions and events integration', () => {
       .set('Authorization', `Bearer ${superLogin.body.accessToken}`)
       .send({ slug: 'cuenta_admin', name: 'Cuenta Admin', ownerUserId: ownerLogin.body.user.id });
     expect(created.status).toBe(201);
-    expect(created.body.account.subscription.status).toBe('active');
+    expect(created.body.account.subscription.status).toBe('past_due');
     expect(created.body.account.subscription.metadata.createdByAdmin).toBe(true);
     adminAccountId = created.body.account.id;
+    const mode = await billingDb('modes').where({ slug: 'espejo' }).first();
+    await billingDb('billing_periods').insert({ account_id: adminAccountId, source: 'test_fixture', services: JSON.stringify([{ modeId: String(mode.id), slug: 'espejo', name: 'Espejo' }]), starts_at: new Date(Date.now() - 1000), ends_at: new Date(Date.now() + 86400000) });
 
     await db.update(accountsTable).set({ isSystem: true }).where(eq(accountsTable.id, BigInt(created.body.account.id)));
     const protectedStatus = await request(app).patch(`/api/admin/accounts/${created.body.account.id}/status`)
@@ -571,7 +582,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(preserved.status).toBe(200);
   });
 
-  it('requires exact account confirmation, protects system accounts and removes empty accounts', async () => {
+  it('blocks unpaid account mutations and protects system accounts', async () => {
     const created = await request(app).post('/api/accounts')
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ slug: 'cuenta_eliminable', name: 'Cuenta Eliminable' });
@@ -581,7 +592,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     const mismatch = await request(app).delete(`/api/accounts/${removableAccountId}`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ confirmationName: 'nombre incorrecto' });
-    expect(mismatch.status).toBe(400);
+    expect(mismatch.status).toBe(403);
 
     const forbidden = await request(app).delete(`/api/accounts/${removableAccountId}`)
       .set('Authorization', `Bearer ${adminLogin.body.accessToken}`)
@@ -591,8 +602,7 @@ run('auth, accounts, subscriptions and events integration', () => {
     const removed = await request(app).delete(`/api/accounts/${removableAccountId}`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ confirmationName: 'Cuenta Eliminable' });
-    expect(removed.status).toBe(200);
-    expect(removed.body).toMatchObject({ deleted: true, archived: false, accountId: removableAccountId });
+    expect(removed.status).toBe(403);
 
     await db.update(accountsTable).set({ isSystem: true }).where(eq(accountsTable.id, BigInt(adminAccountId)));
     const protectedAccount = await request(app).delete(`/api/accounts/${adminAccountId}`)

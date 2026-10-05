@@ -1,6 +1,9 @@
 import { sendApiError } from '../lib/api-error.ts';
 import {
   completeMirrorAsset,
+  getCompositionArchiveStates,
+  setCompositionArchiveState,
+  listMirrorCompositions,
   completeMirrorCapture,
   createMirrorCaptureRun,
   getPublicMirrorAsset,
@@ -13,6 +16,20 @@ import {
 
 function sendError(res: any, error: unknown, fallback: string) {
   sendApiError(res.req, res, error, fallback);
+}
+
+export async function getCompositionArchives(req: any, res: any) {
+  try { res.status(200).json(await getCompositionArchiveStates(req.params.id, req.params.eventModeId, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo consultar el archivo'); }
+}
+export async function putCompositionArchive(req: any, res: any) {
+  try { res.status(200).json(await setCompositionArchiveState(req.params.id, req.params.eventModeId, req.body || {}, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo actualizar el archivo'); }
+}
+
+export async function getCompositions(req: any, res: any) {
+  try { res.status(200).json(await listMirrorCompositions(req.params.id, req.params.eventModeId, req.query.cursor, req.authUser)); }
+  catch (error) { sendError(res, error, 'No se pudo consultar la galería'); }
 }
 
 export async function postRun(req: any, res: any) {
@@ -41,7 +58,11 @@ export async function postAsset(req: any, res: any) {
 }
 
 export async function postCompleteAsset(req: any, res: any) {
-  try { res.status(200).json(await completeMirrorAsset(req.params.id, req.params.eventModeId, req.params.sessionId, req.params.runId, req.params.assetId, req.authUser)); }
+  try {
+    const result = await completeMirrorAsset(req.params.id, req.params.eventModeId, req.params.sessionId, req.params.runId, req.params.assetId, req.authUser);
+    const base = process.env.PUBLIC_WEB_URL || (process.env.NODE_ENV !== 'production' ? `${req.protocol}://${req.hostname}:5173` : null);
+    res.status(200).json({ ...result, publicUrl: base ? new URL(`/photos/${result.asset.publicHash}`, base).href : null });
+  }
   catch (error) { sendError(res, error, 'No se pudo confirmar el entregable'); }
 }
 
@@ -58,6 +79,13 @@ export async function getPublicAsset(req: any, res: any) {
     return res.redirect(302, payload.downloadUrl);
   }
   catch (error) { sendError(res, error, 'No se pudo obtener el entregable'); }
+}
+
+export async function getPublicAssetInfo(req: any, res: any) {
+  try {
+    const result = await getPublicMirrorAsset(req.params.publicHash);
+    res.status(200).json({ ready: result.ready, downloadUrl: result.downloadUrl });
+  } catch (error) { sendError(res, error, 'No se pudo obtener la foto'); }
 }
 
 export async function postPublicDelivery(req: any, res: any) {

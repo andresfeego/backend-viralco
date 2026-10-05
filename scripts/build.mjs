@@ -7,6 +7,7 @@ await build({
   entryPoints: ['src/server.ts'],
   outfile: 'dist/server.js',
   bundle: true,
+  external: ['knex'],
   platform: 'node',
   target: 'node24',
   format: 'cjs',

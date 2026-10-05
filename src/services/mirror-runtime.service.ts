@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { assertRuntimeBilling } from './offline-authorization.service.ts';
+import { and, eq, desc, lt, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
   assetEventResourcesTable,
@@ -21,9 +22,59 @@ import {
   r2PublicUrl,
 } from '../r2.ts';
 import { getMirrorContext, mapSession } from './magic-mirror.service.ts';
+import { assertAccountAccess } from './account-access.service.ts';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RUN_STATUSES = new Set(['capturing', 'reviewing', 'processing', 'processed', 'synced', 'failed', 'abandoned']);
+
+export async function getCompositionArchiveStates(eventId: unknown, eventModeId: unknown, requester: any) {
+  const context = await getMirrorContext(eventId, eventModeId, requester, 'events.view');
+  const rows = await db.select({ clientAssetId: assetsTable.clientAssetId, metadata: assetsTable.metadata }).from(assetsTable).where(and(
+    eq(assetsTable.eventId, context.eventId), eq(assetsTable.eventModeId, context.eventModeId), eq(assetsTable.type, 'photo'),
+  ));
+  return { items: rows.filter((row) => row.clientAssetId).map((row) => ({ clientAssetId: row.clientAssetId, archived: parseJson(row.metadata)?.archived === true })) };
+}
+
+export async function setCompositionArchiveState(eventId: unknown, eventModeId: unknown, input: any, requester: any) {
+  const context = await getMirrorContext(eventId, eventModeId, requester, 'events.view');
+  // Gallery management remains available after the event ends; launching checks do not apply.
+  await assertAccountAccess(context.event.accountId, requester, 'read', 'capture.operate');
+  await assertRuntimeBilling(context, requester);
+  const clientAssetId = assertUuid(input.clientAssetId, 'Imagen');
+  if (typeof input.archived !== 'boolean') throw new ServiceError(400, 'Estado de archivo invalido');
+  const where = and(eq(assetsTable.eventId, context.eventId), eq(assetsTable.eventModeId, context.eventModeId), eq(assetsTable.clientAssetId, clientAssetId), eq(assetsTable.type, 'photo'));
+  const [asset] = await db.select({ id: assetsTable.id }).from(assetsTable).where(where).limit(1);
+  if (!asset) return { found: false };
+  // Update just archive metadata atomically; never remove captures or overwrite upload metadata.
+  await db.update(assetsTable).set({
+    metadata: sql`json_set(coalesce(${assetsTable.metadata}, json_object()), '$.archived', json_extract(${JSON.stringify(input.archived)}, '$'))`,
+    updatedAt: new Date(),
+  }).where(where);
+  return { found: true, clientAssetId, archived: input.archived };
+}
+
+export async function listMirrorCompositions(eventId: unknown, eventModeId: unknown, cursor: unknown, requester: any) {
+  const context = await getMirrorContext(eventId, eventModeId, requester, 'events.view');
+  const before = cursor ? parseEntityId(cursor, 'Cursor') : null;
+  // Capture/composition time, not the later upload time. ISO timestamps sort lexically.
+  const captureDate = sql<string>`coalesce(nullif(json_unquote(json_extract(${assetsTable.metadata}, '$.capturedAt')), 'null'), nullif(json_unquote(json_extract(${assetsTable.metadata}, '$.localCreatedAt')), 'null'), date_format(${assetsTable.createdAt}, '%Y-%m-%dT%H:%i:%s.000Z'))`;
+  let beforeDate: string | undefined;
+  if (before) {
+    const [anchor] = await db.select({ captureDate }).from(assetsTable).where(and(eq(assetsTable.id, before), eq(assetsTable.eventId, context.eventId), eq(assetsTable.eventModeId, context.eventModeId))).limit(1);
+    if (!anchor) throw new ServiceError(400, 'Cursor invalido');
+    beforeDate = anchor.captureDate;
+  }
+  const rows = await db.select().from(assetsTable).where(and(
+    eq(assetsTable.eventId, context.eventId), eq(assetsTable.eventModeId, context.eventModeId),
+    eq(assetsTable.type, 'photo'), eq(assetsTable.status, 'synced'), isNotNull(assetsTable.storageKey),
+    before && beforeDate ? or(lt(captureDate, beforeDate), and(eq(captureDate, beforeDate), lt(assetsTable.id, before))) : undefined,
+  )).orderBy(desc(captureDate), desc(assetsTable.id)).limit(31);
+  const page = rows.slice(0, 30);
+  return {
+    items: await Promise.all(page.map(async (row) => ({ ...mapAsset(row), url: await createPresignedReadUrl(row.storageKey!) }))),
+    nextCursor: rows.length > 30 ? serializeId(page[page.length - 1].id) : null,
+  };
+}
 
 function parseJson(value: any) {
   if (typeof value !== 'string') return value;
@@ -75,7 +126,8 @@ async function runtimeContext(eventIdValue: unknown, eventModeIdValue: unknown, 
     eq(eventModeSessionsTable.eventModeId, context.eventModeId),
   )).limit(1);
   if (!session) throw new ServiceError(404, 'Sesion no encontrada');
-  return { ...context, session };
+  const billing = await assertRuntimeBilling(context, requester, session);
+  return { ...context, session, billing };
 }
 
 async function runForContext(context: any, runIdValue: unknown) {
@@ -85,6 +137,7 @@ async function runForContext(context: any, runIdValue: unknown) {
     eq(mirrorCaptureRunsTable.eventModeSessionId, context.session.id),
   )).limit(1);
   if (!run) throw new ServiceError(404, 'Experiencia no encontrada');
+  if (context.billing?.continuity && new Date(run.startedAt).getTime() < context.billing.startedAt) throw new ServiceError(403, 'Esta captura anterior requiere renovar la suscripcion para sincronizarse');
   return run;
 }
 
@@ -103,6 +156,7 @@ export async function createMirrorCaptureRun(eventId: unknown, eventModeId: unkn
   }
   const startedAt = input?.startedAt ? new Date(input.startedAt) : new Date();
   if (Number.isNaN(startedAt.getTime())) throw new ServiceError(400, 'startedAt invalido');
+  if (context.billing?.continuity && startedAt.getTime() < context.billing.startedAt) throw new ServiceError(403, 'Las capturas anteriores requieren renovar la suscripcion');
   if (!sessionAcceptsRun(context.session, startedAt)) throw new ServiceError(409, 'La sesion ya no acepta nuevas experiencias');
   const now = new Date();
   const result = await db.insert(mirrorCaptureRunsTable).values({

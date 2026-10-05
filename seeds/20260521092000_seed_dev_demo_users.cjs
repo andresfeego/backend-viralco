@@ -4,6 +4,7 @@ const DEMO_USERS = [
   { email: 'superadmin@viralco.local', password: 'superadmin1234', name: 'Super Admin', phone: '3000000001', status: 'active', globalRole: 'super_admin' },
   { email: 'adminuseractivo@viralco.local', password: 'adminuseractivo1234', name: 'Admin User Activo', phone: '3000000002', status: 'active' },
   { email: 'useradminpendiente@viralco.local', password: 'useradminpendiente1234', name: 'User Admin Pendiente', phone: '3000000003', status: 'pending' },
+  { email: 'usuarioregistrado@viralco.local', password: 'usuarioregistrado1234', name: 'Usuario Registrado', phone: null, status: 'active' },
 ];
 
 /** @param {import('knex').Knex} knex */

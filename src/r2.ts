@@ -41,6 +41,7 @@ function requiredEnv(name: string) {
 function r2Client() {
   const accountId = requiredEnv('R2_ACCOUNT_ID');
   return new S3Client({
+    requestChecksumCalculation: 'WHEN_REQUIRED',
     region: process.env.R2_BUCKET_REGION || 'auto',
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: {
@@ -211,7 +212,7 @@ export async function createPresignedRuntimeUpload(input: { key: string; content
     ContentType: input.contentType,
     Metadata: { sha256: input.sha256 },
   });
-  const uploadUrl = await getSignedUrl(r2, command, { expiresIn: SIGNED_UPLOAD_EXPIRES_IN });
+  const uploadUrl = await getSignedUrl(r2, command, { expiresIn: SIGNED_UPLOAD_EXPIRES_IN, unhoistableHeaders: new Set(['x-amz-meta-sha256']) });
   return {
     uploadUrl,
     method: 'PUT',

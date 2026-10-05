@@ -71,7 +71,7 @@ export async function createPrintProfile(input: any, requester: any, owner: { ow
       appliesToAllEventTypes: eventTypeScope.appliesToAllEventTypes,
       storageKey: jsonKey, fileUrl: r2PublicUrl(jsonKey), previewUrl: null, mimeType: PRINT_PROFILE_MIME,
       sizeBytes: BigInt(jsonBuffer.byteLength), tags: Array.isArray(input?.tags) ? input.tags : null,
-      metadata: { ...(input?.metadata && typeof input.metadata === 'object' ? input.metadata : {}), mirrorCompatible: true, templateKind: PRINT_PROFILE_KIND, contentHash, printProfile: profile },
+      metadata: { ...(input?.metadata && typeof input.metadata === 'object' ? input.metadata : {}), printGuide: null, mirrorCompatible: true, templateKind: PRINT_PROFILE_KIND, contentHash, printProfile: profile },
       status: 'active', createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now,
     });
     assetId = BigInt(result[0]?.insertId || 0);

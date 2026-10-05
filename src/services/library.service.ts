@@ -54,13 +54,18 @@ async function mapVariants(rows: any[] = []) {
 
 export async function mapLibraryAsset(row: any, category?: any, variants?: any[], eventTypes: any[] = []) {
   if (!row) return null;
+  let metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata || null;
+  const manual = row.type === 'print_profile' ? metadata?.printGuide?.manual : null;
+  if (manual?.key && /^(viralco|accounts\/\d+)\/library\/print_profile\/[^/]+\/manuals\/[a-f0-9]{64}\.pdf$/.test(manual.key)) {
+    metadata = { ...metadata, printGuide: { ...metadata.printGuide, manual: { ...manual, url: await createPresignedReadUrl(manual.key) } } };
+  }
   return {
     id: serializeId(row.id), categoryId: serializeId(row.categoryId), category: category ? mapCategory(category) : undefined,
     ownerType: row.ownerType, ownerAccountId: serializeId(row.ownerAccountId), sourceAssetId: serializeId(row.sourceAssetId),
     name: row.name, type: row.type, motionType: row.motionType || null, appliesToAllEventTypes: Boolean(row.appliesToAllEventTypes),
     eventTypes: eventTypes.map((eventType) => ({ id: serializeId(eventType.id), slug: eventType.slug, name: eventType.name })),
     storageKey: row.storageKey, fileUrl: row.fileUrl, fileSignedUrl: await createPresignedReadUrl(row.storageKey), previewUrl: row.previewUrl,
-    mimeType: row.mimeType, sizeBytes: serializeId(row.sizeBytes), tags: row.tags || null, metadata: row.metadata || null,
+    mimeType: row.mimeType, sizeBytes: serializeId(row.sizeBytes), tags: row.tags || null, metadata,
     variants: variants === undefined ? undefined : await mapVariants(variants),
     status: row.status, createdBy: serializeId(row.createdBy), createdAt: row.createdAt, updatedAt: row.updatedAt,
   };

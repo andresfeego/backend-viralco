@@ -226,6 +226,13 @@ export const eventModesTable = mysqlTable(
   ]
 );
 
+export const eventModeRecoveryAccessTable = mysqlTable('event_mode_recovery_access', {
+  eventModeId: bigint('event_mode_id', { mode: 'bigint', unsigned: true }).primaryKey(),
+  verifier: varchar('verifier', { length: 100 }).notNull(),
+  updatedBy: bigint('updated_by', { mode: 'bigint', unsigned: true }).notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+});
+
 export const eventModeConfigsTable = mysqlTable(
   'event_mode_configs',
   {

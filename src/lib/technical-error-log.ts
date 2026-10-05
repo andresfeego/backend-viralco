@@ -7,6 +7,7 @@ const LOG_FILE = path.join(LOG_DIRECTORY, 'backend-errors.jsonl');
 
 function redact(value: string) {
   return value
+    .replace(/\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}/g, '[redacted verifier]')
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
     .replace(/(password|newPassword|refreshToken|accessToken|authorization|token)(["'\s:=]+)([^\s,"'}]+)/gi, '$1$2[redacted]')
     .slice(0, MAX_DETAIL_LENGTH);

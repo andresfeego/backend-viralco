@@ -222,6 +222,8 @@ export async function createEvent(accountIdValue: unknown, input: any, requester
   const now = new Date();
 
   const eventId = await db.transaction(async (tx) => {
+    const lockedModes = await tx.select().from(modesTable).where(inArray(modesTable.id, modes.map(mode => mode.id))).orderBy(modesTable.id).for('update');
+    if (lockedModes.length !== modes.length) throw new ServiceError(409, 'Los modos cambiaron; actualiza el evento');
     const result = await tx.insert(eventsTable).values({ accountId, eventTypeId: eventType.id, slug, name, description: description || null, startDate, endDate, status, timezone, createdBy: parseEntityId(requester.id), createdAt: now, updatedAt: now });
     const insertedEventId = BigInt(result[0]?.insertId || 0);
     if (!insertedEventId) throw new ServiceError(500, 'No se pudo crear evento');
@@ -252,6 +254,10 @@ export async function updateEvent(eventIdValue: unknown, input: any, requester: 
   const nextModes = input?.modeSlugs === undefined ? null : await modeIdsFromInput(input.modeSlugs, { requireExplicit: true });
   if (nextModes) await assertSubscriptionIncludesModes(current.accountId, nextModes.map((mode) => mode.slug));
   await db.transaction(async (tx) => {
+    if (nextModes) {
+      const lockedModes = await tx.select().from(modesTable).where(inArray(modesTable.id, nextModes.map(mode => mode.id))).orderBy(modesTable.id).for('update');
+      if (lockedModes.length !== nextModes.length) throw new ServiceError(409, 'Los modos cambiaron; actualiza el evento');
+    }
     await tx.update(eventsTable).set({ eventTypeId: nextEventType.id, name: nextName, slug: nextSlug, startDate: nextStartDate, endDate: nextEndDate, status: nextStatus, description: nextDescription || null, timezone: nextTimezone, updatedAt: new Date() }).where(eq(eventsTable.id, eventId));
     if (nextModes) {
       await tx.delete(eventModesTable).where(eq(eventModesTable.eventId, eventId));

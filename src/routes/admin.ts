@@ -14,6 +14,8 @@ import {
 } from '../controllers/admin.controller.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
 import { requireRole } from '../middlewares/require-role.ts';
+import { savePrintGuide } from '../services/print-guide.service.ts';
+import { sendApiError } from '../lib/api-error.ts';
 
 const router = express.Router();
 const uploadImage = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
@@ -30,6 +32,13 @@ router.post('/library/image-upload', requireAuth, requireRole('super_admin'), up
 router.post('/library/assets', requireAuth, requireRole('super_admin'), postGlobalLibraryAsset);
 router.post('/library/layout-templates', requireAuth, requireRole('super_admin'), postGlobalPhotoLayoutTemplate);
 router.post('/library/print-profiles', requireAuth, requireRole('super_admin'), postGlobalPrintProfile);
+router.post('/library/print-profiles/:id/guide', requireAuth, requireRole('super_admin'), uploadImage.single('file'), async (req: any, res: any) => {
+  try {
+    let input;
+    try { input = JSON.parse(req.body.guide || '{}'); } catch { return res.status(400).json({ error: 'Guia invalida' }); }
+    res.json({ guide: await savePrintGuide(req.params.id, input, req.file, req.authUser) });
+  } catch (error) { sendApiError(req, res, error, 'No se pudo guardar la guia'); }
+});
 router.patch(
   '/users/:id/activate',
   requireAuth,

@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { isDeepStrictEqual } from 'node:util';
 import { db } from '../db/index.ts';
 import {
   eventModeConfigsTable,
@@ -280,7 +281,7 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
   ['qr', 'share', 'download', 'print'].forEach((key) => {
     if (!isBoolean(config.delivery?.[key])) errors.push(issue(`delivery.${key}`, 'BOOLEAN_REQUIRED', 'El valor de entrega debe ser booleano'));
   });
-  if (!boundedInteger(config.runtime?.autoResetSeconds, 5, 300)) errors.push(issue('runtime.autoResetSeconds', 'AUTO_RESET_INVALID', 'El reinicio debe estar entre 5 y 300 segundos'));
+  // Legacy autoResetSeconds is not a publication requirement.
   if (!isBoolean(config.runtime?.operatorMenuEnabled)) errors.push(issue('runtime.operatorMenuEnabled', 'BOOLEAN_REQUIRED', 'El menu del operador debe ser booleano'));
   return { valid: errors.length === 0, errors, warnings };
 }
@@ -421,11 +422,11 @@ async function fullValidation(context: any, config: any, publish = false) {
   return { valid: errors.length === 0, errors, warnings: local.warnings, manifest: remote.manifest };
 }
 
-function mapConfig(row: any) {
+function mapConfig(row: any, publishedConfig?: any) {
   if (!row) return { eventModeId: null, schemaVersion: MIRROR_SCHEMA_VERSION, revision: 0, status: 'draft', config: defaultMirrorConfig(), publishedVersionId: null, updatedAt: null };
   return {
     id: serializeId(row.id), eventModeId: serializeId(row.eventModeId), schemaVersion: row.schemaVersion, revision: row.revision,
-    status: row.publishedVersionId ? 'published' : 'draft', config: parseJson(row.config), publishedVersionId: serializeId(row.publishedVersionId), updatedAt: row.updatedAt,
+    status: row.publishedVersionId && publishedConfig && isDeepStrictEqual(parseJson(row.config), publishedConfig) ? 'published' : 'draft', config: parseJson(row.config), publishedVersionId: serializeId(row.publishedVersionId), updatedAt: row.updatedAt,
   };
 }
 
@@ -441,7 +442,10 @@ export function mapSession(row: any) {
 export async function getMirrorConfig(eventIdValue: unknown, eventModeIdValue: unknown, requester: any) {
   const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'events.view');
   const [row] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);
-  return { ...mapConfig(row), eventModeId: serializeId(context.eventModeId) };
+  const [published] = row?.publishedVersionId
+    ? await db.select().from(eventModeConfigVersionsTable).where(and(eq(eventModeConfigVersionsTable.id, row.publishedVersionId), eq(eventModeConfigVersionsTable.eventModeId, context.eventModeId))).limit(1)
+    : [];
+  return { ...mapConfig(row, published ? parseJson(published.config) : undefined), publishedVersion: published?.version ?? null, eventModeId: serializeId(context.eventModeId) };
 }
 
 export async function saveMirrorConfig(eventIdValue: unknown, eventModeIdValue: unknown, input: any, requester: any) {
@@ -490,9 +494,12 @@ export async function publishMirrorConfig(eventIdValue: unknown, eventModeIdValu
   const config = parseJson(current.config);
   const validation = await fullValidation(context, config, true);
   if (!validation.valid) throw new ServiceError(400, JSON.stringify({ code: 'CONFIG_INVALID', errors: validation.errors }));
-  const [lastVersion] = await db.select().from(eventModeConfigVersionsTable).where(eq(eventModeConfigVersionsTable.eventModeId, context.eventModeId)).orderBy(desc(eventModeConfigVersionsTable.version)).limit(1);
   const now = new Date();
   const versionId = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM event_modes WHERE id = ${context.eventModeId} FOR UPDATE`);
+    const [lockedDraft] = await tx.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.id, current.id)).limit(1);
+    if (lockedDraft?.revision !== current.revision) throw new ServiceError(409, JSON.stringify({ code: 'CONFIG_REVISION_CONFLICT', currentRevision: lockedDraft?.revision }));
+    const [lastVersion] = await tx.select().from(eventModeConfigVersionsTable).where(eq(eventModeConfigVersionsTable.eventModeId, context.eventModeId)).orderBy(desc(eventModeConfigVersionsTable.version)).limit(1);
     const result = await tx.insert(eventModeConfigVersionsTable).values({ eventModeId: context.eventModeId, version: Number(lastVersion?.version || 0) + 1, schemaVersion: current.schemaVersion, config, publishedBy: parseEntityId(requester.id), publishedAt: now });
     const id = BigInt(result[0]?.insertId || 0);
     await tx.update(eventModeConfigsTable).set({ publishedVersionId: id, updatedAt: now }).where(eq(eventModeConfigsTable.id, current.id));
@@ -514,6 +521,7 @@ export async function getPublishedMirrorConfig(eventIdValue: unknown, eventModeI
 
 export async function startMirrorSession(eventIdValue: unknown, eventModeIdValue: unknown, input: any, requester: any) {
   const context = await getMirrorContext(eventIdValue, eventModeIdValue, requester, 'capture.operate');
+  await assertSubscriptionIncludesModes(context.event.accountId, ['espejo']);
   const clientSessionId = String(input?.clientSessionId || '').trim();
   const deviceInstallationId = String(input?.deviceInstallationId || '').trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clientSessionId)) throw new ServiceError(400, 'clientSessionId debe ser UUID');
@@ -521,12 +529,18 @@ export async function startMirrorSession(eventIdValue: unknown, eventModeIdValue
   const [configRow] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);
   if (!configRow?.publishedVersionId) throw new ServiceError(409, 'Publica la configuracion antes de lanzar');
   const published = await getPublishedMirrorConfig(eventIdValue, eventModeIdValue, requester);
+  const expectedVersion = input?.expectedPublishedVersionId == null ? null : String(parseEntityId(input.expectedPublishedVersionId, 'Version publicada'));
   const now = new Date();
   const session = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM event_modes WHERE id = ${context.eventModeId} FOR UPDATE`);
+    const [lockedConfig] = await tx.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);
+    if (String(lockedConfig?.publishedVersionId) !== String(published.version.id) || (expectedVersion && expectedVersion !== String(lockedConfig?.publishedVersionId))) {
+      throw new ServiceError(409, JSON.stringify({ code: 'MIRROR_PUBLISHED_VERSION_CHANGED', message: 'La publicacion cambio. Vuelve a iniciar el lanzamiento.' }));
+    }
     const [existing] = await tx.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.clientSessionId, clientSessionId)).limit(1);
     if (existing) {
       if (existing.eventModeId !== context.eventModeId) throw new ServiceError(409, 'clientSessionId pertenece a otro modo');
+      if (expectedVersion && expectedVersion !== String(existing.configVersionId)) throw new ServiceError(409, JSON.stringify({ code: 'MIRROR_PUBLISHED_VERSION_CHANGED', message: 'La publicacion cambio. Vuelve a iniciar el lanzamiento.' }));
       return existing;
     }
     const [active] = await tx.select().from(eventModeSessionsTable).where(and(
@@ -542,6 +556,9 @@ export async function startMirrorSession(eventIdValue: unknown, eventModeIdValue
     const [created] = await tx.select().from(eventModeSessionsTable).where(eq(eventModeSessionsTable.id, BigInt(result[0]?.insertId || 0))).limit(1);
     return created;
   });
+  // Idempotent requests may find a session pinned to an older publication.
+  // Never return that session alongside the latest (different) configuration.
+  if (String(session.configVersionId) !== String(published.version.id)) return getMirrorSessionPackage(eventIdValue, eventModeIdValue, serializeId(session.id), requester);
   return { session: mapSession(session), ...published };
 }
 

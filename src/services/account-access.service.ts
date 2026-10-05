@@ -36,6 +36,10 @@ export async function assertAccountAccess(accountId: EntityId, requester: any, m
   const account = await findAccountById(accountId);
   if (!account) throw new ServiceError(404, 'Cuenta no encontrada');
   if (account.status !== 'active') throw new ServiceError(403, 'Cuenta sin acceso activo');
+  if (mode === 'write' && !account.isSystem) {
+    const { assertBillingActive } = await import('./billing.service.ts');
+    await assertBillingActive(accountId);
+  }
   if (isSuperAdmin(requester)) return { account, membership: null, roleSlug: 'super_admin' };
 
   const row = await findAccountMembership(accountId, parseEntityId(requester.id));

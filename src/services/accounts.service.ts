@@ -1,4 +1,5 @@
 import { and, eq, inArray, ne } from 'drizzle-orm';
+import { billingDb } from '../db/billing.ts';
 import { db } from '../db/index.ts';
 import { accountLibraryTable, accountsTable, accountUsersTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, permissionsTable, rolePermissionsTable, rolesTable, subscriptionsTable, usersTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
@@ -92,6 +93,8 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
   const logoAssetId = input?.logoAssetId ? parseEntityId(input.logoAssetId, 'ID de logo') : null;
   if (!/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(slug)) throw new ServiceError(400, 'Slug invalido');
   if (!name) throw new ServiceError(400, 'Nombre de cuenta requerido');
+  const durationDays = input?.durationDays ?? 30;
+  if (durationDays !== 30 && durationDays !== 365) throw new ServiceError(400, 'Periodicidad invalida');
   if (await findAccountBySlug(slug)) throw new ServiceError(409, 'El slug ya existe');
   await assertInitialLogoAsset(logoAssetId);
   const owner = await buildAuthUser(ownerUserId);
@@ -112,7 +115,7 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
       accountId, userId: ownerUserId, roleId: ownerRole.id, status: 'active',
       invitedBy: parseEntityId(requester.id), invitedAt: now, joinedAt: now, createdAt: now, updatedAt: now,
     });
-    const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'suscripcion', modeSlugs: input?.modeSlugs, status: options.subscriptionStatus, metadata: options.subscriptionMetadata }, tx);
+    const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'suscripcion', modeSlugs: input?.modeSlugs, status: options.subscriptionStatus, metadata: { ...options.subscriptionMetadata, billingPreference: { durationDays, modeSlugs: input?.modeSlugs || [] } } }, tx);
     return mapAccount({
       id: accountId, slug, name, logoAssetId,
       phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
@@ -122,16 +125,16 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
 }
 
 export async function createAccount(input: any, requester: any) {
-  return createAccountRecord(input, requester, { requireSuperAdmin: true, subscriptionStatus: 'active', subscriptionMetadata: { createdByAdmin: true } });
+  return createAccountRecord(input, requester, { requireSuperAdmin: true, subscriptionStatus: 'past_due', subscriptionMetadata: { createdByAdmin: true, paymentMethod: 'bank_transfer' } });
 }
 
 export async function createSelfServiceAccount(input: any, requester: any) {
-  return createAccountRecord(input, requester, { ownerUserId: parseEntityId(requester.id), requireSuperAdmin: false, subscriptionStatus: 'trialing', subscriptionMetadata: { simulatedCheckout: true } });
+  return createAccountRecord(input, requester, { ownerUserId: parseEntityId(requester.id), requireSuperAdmin: false, subscriptionStatus: 'past_due', subscriptionMetadata: { paymentMethod: 'bank_transfer' } });
 }
 
 export async function updateAccount(accountIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'read', 'accounts.update');
+  await assertAccountAccess(accountId, requester, 'write', 'accounts.update');
   const current = await findAccountById(accountId);
   if (!current) throw new ServiceError(404, 'Cuenta no encontrada');
   const name = input?.name === undefined ? current.name : String(input.name).trim();
@@ -178,7 +181,9 @@ export async function removeAccount(accountIdValue: unknown, input: any, request
       .where(eq(eventsTable.accountId, accountId)).limit(1),
   ]);
 
-  if (publication.length || session.length) {
+  const financialHistory = await billingDb('billing_orders').where({ account_id: String(accountId) }).first()
+    || await billingDb('billing_periods').where({ account_id: String(accountId) }).first();
+  if (publication.length || session.length || financialHistory) {
     const now = new Date();
     await db.transaction(async (tx) => {
       await tx.update(eventsTable).set({ status: 'archived', updatedAt: now }).where(eq(eventsTable.accountId, accountId));
@@ -234,7 +239,7 @@ export async function listMembers(accountIdValue: unknown, requester: any) {
 
 export async function addMember(accountIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'read', 'accounts.members.manage');
+  await assertAccountAccess(accountId, requester, 'write', 'accounts.members.manage');
   const userId = parseEntityId(input?.userId, 'ID de usuario');
   const roleSlug = String(input?.roleSlug || '').trim();
   if (!ASSIGNABLE_ROLES.has(roleSlug)) throw new ServiceError(400, 'Rol de cuenta invalido');
@@ -269,7 +274,7 @@ async function assertCanChangeOwnerMembership(accountId: EntityId, membership: a
 export async function updateMember(accountIdValue: unknown, membershipIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
   const membershipId = parseEntityId(membershipIdValue, 'ID de membresia');
-  await assertAccountAccess(accountId, requester, 'read', 'accounts.members.manage');
+  await assertAccountAccess(accountId, requester, 'write', 'accounts.members.manage');
   const [membership] = await db.select().from(accountUsersTable)
     .where(and(eq(accountUsersTable.id, membershipId), eq(accountUsersTable.accountId, accountId))).limit(1);
   if (!membership) throw new ServiceError(404, 'Membresia no encontrada');
@@ -294,7 +299,7 @@ export async function updateMember(accountIdValue: unknown, membershipIdValue: u
 export async function removeMember(accountIdValue: unknown, membershipIdValue: unknown, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
   const membershipId = parseEntityId(membershipIdValue, 'ID de membresia');
-  await assertAccountAccess(accountId, requester, 'read', 'accounts.members.manage');
+  await assertAccountAccess(accountId, requester, 'write', 'accounts.members.manage');
   const [membership] = await db.select().from(accountUsersTable)
     .where(and(eq(accountUsersTable.id, membershipId), eq(accountUsersTable.accountId, accountId))).limit(1);
   if (!membership) throw new ServiceError(404, 'Membresia no encontrada');

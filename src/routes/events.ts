@@ -1,12 +1,16 @@
 import express from 'express';
+import { readBillingLiveProof } from '../services/offline-authorization.service.ts';
+import { getOperationAccess, postOfflineSession } from '../controllers/magic-mirror.controller.ts';
+import { getCompositionArchives, putCompositionArchive } from '../controllers/mirror-runtime.controller.ts';
+import { getRecovery, putRecovery } from '../controllers/mirror-recovery.controller.ts';
 import { deleteEvent, deleteResource, getEvent, getModes, getResources, getTypes, patchEvent, patchEventBranding, patchResource, postResource } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
 import { requireAuth } from '../middlewares/require-auth.ts';
 import { getActiveSession, getConfig, getPublished, getSessionPackage, patchSession, postApplyLayoutTemplate, postEndSession, postForceEndSession, postPublish, postSession, postValidate, putConfig } from '../controllers/magic-mirror.controller.ts';
-import { getSessionSummary, patchRun, postAsset, postCapture, postCompleteAsset, postCompleteCapture, postRun } from '../controllers/mirror-runtime.controller.ts';
+import { getCompositions, getSessionSummary, patchRun, postAsset, postCapture, postCompleteAsset, postCompleteCapture, postRun } from '../controllers/mirror-runtime.controller.ts';
 
 const router = express.Router();
-router.use(requireAuth, requireActive);
+router.use(requireAuth, requireActive, readBillingLiveProof);
 
 router.get('/types', getTypes);
 router.get('/modes', getModes);
@@ -16,8 +20,15 @@ router.post('/:id/modes/:eventModeId/config/validate', postValidate);
 router.post('/:id/modes/:eventModeId/config/publish', postPublish);
 router.post('/:id/modes/:eventModeId/layout-templates/:assetId/apply', postApplyLayoutTemplate);
 router.get('/:id/modes/:eventModeId/config/published', getPublished);
+router.get('/:id/modes/:eventModeId/compositions', getCompositions);
+router.get('/:id/modes/:eventModeId/compositions/archive', getCompositionArchives);
+router.put('/:id/modes/:eventModeId/compositions/archive', putCompositionArchive);
 router.get('/:id/modes/:eventModeId/sessions/active', getActiveSession);
+router.get('/:id/modes/:eventModeId/operation-access', getOperationAccess);
+router.post('/:id/modes/:eventModeId/sessions/offline', postOfflineSession);
 router.post('/:id/modes/:eventModeId/sessions', postSession);
+router.get('/:id/modes/:eventModeId/recovery-access', getRecovery);
+router.put('/:id/modes/:eventModeId/recovery-access', putRecovery);
 router.patch('/:id/modes/:eventModeId/sessions/:sessionId', patchSession);
 router.post('/:id/modes/:eventModeId/sessions/:sessionId/end', postEndSession);
 router.post('/:id/modes/:eventModeId/sessions/:sessionId/force-end', postForceEndSession);

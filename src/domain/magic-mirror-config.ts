@@ -89,6 +89,12 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
   }
 
   const layout = config.layout || {};
+  if (layout.photoFrameOrder !== undefined && (!Array.isArray(layout.photoFrameOrder)
+    || layout.photoFrameOrder.length > 128
+    || new Set(layout.photoFrameOrder).size !== layout.photoFrameOrder.length
+    || layout.photoFrameOrder.some((id: unknown) => typeof id !== 'string' || !/^(slot|frame):[a-z0-9-]{1,100}$/i.test(id)))) {
+    errors.push(issue('layout.photoFrameOrder', 'PHOTO_FRAME_ORDER_INVALID', 'El orden compartido de tomas y marcos no es valido'));
+  }
   const shotCount = Number(layout.shotCount);
   const format = String(layout.format || '');
   const formatSpec = MIRROR_FORMATS[format as keyof typeof MIRROR_FORMATS];
@@ -236,7 +242,7 @@ export function validateMirrorConfigLocally(config: any, publish = false) {
   ['qr', 'share', 'download', 'print'].forEach((key) => {
     if (typeof config.delivery?.[key] !== 'boolean') errors.push(issue(`delivery.${key}`, 'BOOLEAN_REQUIRED', 'El valor de entrega debe ser booleano'));
   });
-  if (!boundedInteger(config.runtime?.autoResetSeconds, 5, 300)) errors.push(issue('runtime.autoResetSeconds', 'AUTO_RESET_INVALID', 'El reinicio debe estar entre 5 y 300 segundos'));
+  // autoResetSeconds is retained as legacy data, but no longer drives launch.
   if (typeof config.runtime?.operatorMenuEnabled !== 'boolean') errors.push(issue('runtime.operatorMenuEnabled', 'BOOLEAN_REQUIRED', 'El menu del operador debe ser booleano'));
   return { valid: errors.length === 0, errors, warnings };
 }

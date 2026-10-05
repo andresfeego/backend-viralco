@@ -1,4 +1,35 @@
 import { sendApiError } from '../lib/api-error.ts';
+import { registerOfflineMirrorSession } from '../services/mirror-offline-session.service.ts';
+import { getMirrorContext } from '../services/magic-mirror.service.ts';
+import { issueOfflineAuthorization, assertRuntimeBilling } from '../services/offline-authorization.service.ts';
+import { billingDb } from '../db/billing.ts';
+
+export async function getOperationAccess(req: any, res: any) {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const context = await getMirrorContext(req.params.id, req.params.eventModeId, req.authUser, 'capture.operate');
+    let grant;
+    let continuity = false;
+    if (req.authUser.billingLiveProof && req.query.clientSessionId === req.authUser.billingLiveProof.clientSessionId) {
+      const p = req.authUser.billingLiveProof;
+      const row = await billingDb('event_mode_sessions').where({ client_session_id: p.clientSessionId, event_mode_id: String(context.eventModeId) }).first();
+      const session = row ? { clientSessionId: row.client_session_id, deviceInstallationId: row.device_installation_id, startedBy: row.started_by, status: row.status, metadata: row.metadata }
+        : { clientSessionId: p.clientSessionId, deviceInstallationId: String(req.query.deviceId || ''), startedBy: req.authUser.id, status: 'running' };
+      try { grant = await issueOfflineAuthorization(context, req.authUser, String(req.query.deviceId || '')); }
+      catch (error: any) {
+        if (error.status !== 403) throw error;
+        await assertRuntimeBilling(context, req.authUser, session);
+        grant = p.grant; continuity = true;
+      }
+    } else grant = await issueOfflineAuthorization(context, req.authUser, String(req.query.deviceId || ''));
+    res.json({ allowed: true, grant, continuity, userId: String(req.authUser.id), eventId: String(context.eventId), eventModeId: String(context.eventModeId), accountId: String(context.event.accountId) });
+  } catch (error) { sendApiError(req, res, error, 'No tienes autorizacion para operar este evento'); }
+}
+
+export async function postOfflineSession(req: any, res: any) {
+  try { res.json({ session: await registerOfflineMirrorSession(req.params.id, req.params.eventModeId, req.body || {}, req.authUser) }); }
+  catch (error) { sendApiError(req, res, error, 'No se pudo sincronizar la sesion offline'); }
+}
 import {
   endMirrorSession,
   forceEndMirrorSession,
