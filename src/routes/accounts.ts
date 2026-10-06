@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { deleteAccount, deleteMember, getAccountById, getAccounts, getMembers, patchAccount, patchMember, postAccountSelf, postMember } from '../controllers/accounts.controller.ts';
+import { deleteAccount, getAccountById, getAccounts, getMembers, patchAccount, postAccountSelf } from '../controllers/accounts.controller.ts';
 import { getAccountLibrary, getAccountPhotoLayoutTemplate, getAccountPrintProfile, patchAccountLibraryFavorite, postAccountLibraryAsset, postAccountLibraryClone, postAccountLibraryEntry, postAccountLibraryImageUpload, postAccountLibraryUpload, postAccountPhotoLayoutTemplate, postAccountPrintProfile } from '../controllers/library.controller.ts';
 import { getAccountEvents, postAccountEvent } from '../controllers/events.controller.ts';
 import { requireActive } from '../middlewares/require-active.ts';
@@ -28,7 +28,6 @@ router.post('/:accountId/library', postAccountLibraryEntry);
 router.post('/:accountId/library/:libraryAssetId/clone', postAccountLibraryClone);
 router.patch('/:accountId/library/:libraryAssetId/favorite', patchAccountLibraryFavorite);
 router.get('/:accountId/members', getMembers);
-router.post('/:accountId/members', postMember);
-router.patch('/:accountId/members/:membershipId', patchMember);
-router.delete('/:accountId/members/:membershipId', deleteMember);
+router.all('/:accountId/members', (req, res, next) => req.method === 'GET' ? next() : res.status(410).json({ code: 'ACCOUNT_MEMBERS_RETIRED', error: 'Asigna miembros desde el evento' }));
+router.all('/:accountId/members/:membershipId', (_req, res) => res.status(410).json({ code: 'ACCOUNT_MEMBERS_RETIRED', error: 'Asigna miembros desde el evento' }));
 export default router;

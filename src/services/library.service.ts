@@ -10,7 +10,8 @@ import { ServiceError } from '../lib/service-error.ts';
 import { renderFontPreviewVariants } from '../lib/font-preview.mjs';
 import { renderVideoPreviewVariants } from '../lib/video-preview.mjs';
 import { assertLibraryKeyScope, assertLibraryUploadInput, buildLibraryAssetVariantKey, createPresignedLibraryUpload, createPresignedReadUrl, getR2ObjectBuffer, LIBRARY_PURPOSES, putR2Object, r2PublicUrl } from '../r2.ts';
-import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
+import { isSuperAdmin } from './account-access.service.ts';
+import { assertLibraryAccountAccess } from './event-access.service.ts';
 
 const OWNER_TYPES = new Set(['viralco', 'account']);
 const ASSET_TYPES = new Set(['frame', 'sticker', 'overlay', 'intro', 'outro', 'music', 'logo', 'background', 'template', 'print_profile', 'branding', 'animation', 'font', 'other']);
@@ -182,14 +183,14 @@ export async function prepareGlobalLibraryUpload(input: any, requester: any) {
 
 export async function prepareAccountLibraryUpload(accountIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'write', 'library.manage');
+  await assertLibraryAccountAccess(accountId, requester, 'write', 'library.manage');
   const upload = assertLibraryUploadInput(input);
   return createPresignedLibraryUpload({ scope: 'account', accountId: serializeId(accountId)!, purpose: upload.purpose, contentType: upload.contentType, fileName: upload.fileName });
 }
 
 export async function createLibraryAsset(input: any, requester: any, owner: { ownerType: 'viralco' | 'account'; accountId?: EntityId }) {
   if (owner.ownerType === 'viralco' && !isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
-  if (owner.ownerType === 'account') await assertAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
+  if (owner.ownerType === 'account') await assertLibraryAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
   const name = String(input?.name || '').trim();
   const type = String(input?.type || input?.purpose || '').trim();
   const status = String(input?.status || 'active').trim();
@@ -311,7 +312,7 @@ async function assertProcessedImageInput(input: any, file: any) {
 
 export async function createProcessedLibraryImageAsset(input: any, file: any, requester: any, owner: { ownerType: 'viralco' | 'account'; accountId?: EntityId }) {
   if (owner.ownerType === 'viralco' && !isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
-  if (owner.ownerType === 'account') await assertAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
+  if (owner.ownerType === 'account') await assertLibraryAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
   const upload = await assertProcessedImageInput(input, file);
   const eventTypeScope = await normalizeEventTypeScope(input);
   const motionType = normalizeMotionType(upload.purpose, upload.originalMimeType, input?.motionType);
@@ -391,7 +392,7 @@ export async function createProcessedLibraryImageAsset(input: any, file: any, re
 
 export async function listLibraryAssets(query: any, requester: any) {
   const accountId = query?.accountId ? parseEntityId(query.accountId, 'ID de cuenta') : null;
-  if (accountId) await assertAccountAccess(accountId, requester, 'read', 'library.view');
+  if (accountId) await assertLibraryAccountAccess(accountId, requester, 'read', 'library.view');
   else if (!isSuperAdmin(requester)) throw new ServiceError(403, 'accountId requerido');
 
   const rows = await db.select({ asset: libraryAssetsTable, category: libraryAssetCategoriesTable })
@@ -411,7 +412,7 @@ export async function listLibraryAssets(query: any, requester: any) {
 
 export async function listAccountLibrary(accountIdValue: unknown, requester: any, query: any = {}) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'read', 'library.view');
+  await assertLibraryAccountAccess(accountId, requester, 'read', 'library.view');
   const page = Math.max(1, Math.floor(Number(query?.page) || 1));
   const pageSize = Math.min(100, Math.max(1, Math.floor(Number(query?.pageSize) || 30)));
   const scope = String(query?.scope || 'linked').trim().toLowerCase();
@@ -534,7 +535,7 @@ export async function listAccountLibrary(accountIdValue: unknown, requester: any
 
 export async function addAssetToAccountLibrary(accountIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'write', 'library.manage');
+  await assertLibraryAccountAccess(accountId, requester, 'write', 'library.manage');
   const libraryAssetId = parseEntityId(input?.libraryAssetId, 'ID de recurso');
   const asset = await findAsset(libraryAssetId);
   if (!asset) throw new ServiceError(404, 'Recurso no encontrado');
@@ -550,7 +551,7 @@ export async function addAssetToAccountLibrary(accountIdValue: unknown, input: a
 export async function setAccountLibraryFavorite(accountIdValue: unknown, assetIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
   const libraryAssetId = parseEntityId(assetIdValue, 'ID de recurso');
-  await assertAccountAccess(accountId, requester, 'write', 'library.manage');
+  await assertLibraryAccountAccess(accountId, requester, 'write', 'library.manage');
   const asset = await findAsset(libraryAssetId);
   if (!asset || asset.status !== 'active') throw new ServiceError(404, 'Recurso activo no encontrado');
   if (asset.ownerType === 'account' && asset.ownerAccountId !== accountId) throw new ServiceError(403, 'Recurso no pertenece a la cuenta');
@@ -580,7 +581,7 @@ export async function setAccountLibraryFavorite(accountIdValue: unknown, assetId
 
 export async function cloneAssetForAccount(accountIdValue: unknown, assetIdValue: unknown, input: any, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'write', 'library.manage');
+  await assertLibraryAccountAccess(accountId, requester, 'write', 'library.manage');
   const sourceId = parseEntityId(assetIdValue, 'ID de recurso');
   const source = await findAsset(sourceId);
   if (!source) throw new ServiceError(404, 'Recurso origen no encontrado');

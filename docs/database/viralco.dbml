@@ -138,7 +138,16 @@ Table event_users {
   event_id bigint [not null, ref: > events.id]
   user_id bigint [not null, ref: > users.id]
   role_id bigint [not null, ref: > roles.id]
+  status varchar(20) [not null, default: 'active', note: 'active | suspended']
+  updated_at datetime
   created_at datetime [not null]
+  indexes { (event_id, user_id) [unique] }
+}
+
+Table retired_account_memberships {
+  membership_id bigint [pk, note: 'Historical identifier; deliberately has no live membership foreign key']
+  snapshot json [not null]
+  retired_at datetime [not null]
 }
 
 Table modes {

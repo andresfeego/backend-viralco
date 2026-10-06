@@ -195,6 +195,8 @@ export const eventUsersTable = mysqlTable(
     eventId: bigint('event_id', { mode: 'bigint', unsigned: true }).notNull(),
     userId: bigint('user_id', { mode: 'bigint', unsigned: true }).notNull(),
     roleId: bigint('role_id', { mode: 'bigint', unsigned: true }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    updatedAt: datetime('updated_at'),
     createdAt: datetime('created_at').notNull(),
   },
   (table) => [uniqueIndex('event_users_event_user_uq').on(table.eventId, table.userId)]

@@ -22,7 +22,7 @@ import {
   r2PublicUrl,
 } from '../r2.ts';
 import { getMirrorContext, mapSession } from './magic-mirror.service.ts';
-import { assertAccountAccess } from './account-access.service.ts';
+import { assertEventAccess } from './event-access.service.ts';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RUN_STATUSES = new Set(['capturing', 'reviewing', 'processing', 'processed', 'synced', 'failed', 'abandoned']);
@@ -38,7 +38,7 @@ export async function getCompositionArchiveStates(eventId: unknown, eventModeId:
 export async function setCompositionArchiveState(eventId: unknown, eventModeId: unknown, input: any, requester: any) {
   const context = await getMirrorContext(eventId, eventModeId, requester, 'events.view');
   // Gallery management remains available after the event ends; launching checks do not apply.
-  await assertAccountAccess(context.event.accountId, requester, 'read', 'capture.operate');
+  await assertEventAccess(context.eventId, requester, 'read', 'capture.operate');
   await assertRuntimeBilling(context, requester);
   const clientAssetId = assertUuid(input.clientAssetId, 'Imagen');
   if (typeof input.archived !== 'boolean') throw new ServiceError(400, 'Estado de archivo invalido');

@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { MySqlDialect } from 'drizzle-orm/mysql-core';
 const mock = vi.hoisted(() => ({ rows: [] as any[], context: vi.fn(), access: vi.fn(), billing: vi.fn(), update: vi.fn(), where: vi.fn() }));
 vi.mock('../src/services/offline-authorization.service.ts', () => ({ assertRuntimeBilling: mock.billing }));
-vi.mock('../src/services/account-access.service.ts', () => ({ assertAccountAccess: mock.access }));
+vi.mock('../src/services/event-access.service.ts', () => ({ assertEventAccess: mock.access }));
 vi.mock('../src/db/index.ts', () => ({ db: {
   select: () => {
     const query: any = { from: () => query, where: (where: any) => { mock.where(where); return query; }, limit: async () => mock.rows,
@@ -25,7 +25,7 @@ it('returns shared archive and restore states scoped to the authorized event and
 it.each([true, false])('changes only archive metadata with operator authorization: %s', async (archived) => {
   mock.rows = [{ id: 1n }];
   expect(await setCompositionArchiveState('1', '2', { clientAssetId: id, archived }, {})).toMatchObject({ found: true, archived });
-  expect(mock.access).toHaveBeenCalledWith(3n, {}, 'read', 'capture.operate');
+  expect(mock.access).toHaveBeenCalledWith(1n, {}, 'read', 'capture.operate');
   expect(Object.keys(mock.update.mock.calls[0][0]).sort()).toEqual(['metadata', 'updatedAt']);
   const query = new MySqlDialect().sqlToQuery(mock.update.mock.calls[0][0].metadata);
   expect(query.sql).toContain('json_set'); expect(query.params).toContain(JSON.stringify(archived));

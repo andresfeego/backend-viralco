@@ -1,4 +1,8 @@
 import express from 'express';
+import eventLibraryRouter from './event-library.ts';
+import { addEventMember, changeEventMember, listEventMembers } from '../services/event-members.service.ts';
+import { listEventAccounts } from '../services/events.service.ts';
+import { sendApiError } from '../lib/api-error.ts';
 import { readBillingLiveProof } from '../services/offline-authorization.service.ts';
 import { getOperationAccess, postOfflineSession } from '../controllers/magic-mirror.controller.ts';
 import { getCompositionArchives, putCompositionArchive } from '../controllers/mirror-runtime.controller.ts';
@@ -14,6 +18,27 @@ router.use(requireAuth, requireActive, readBillingLiveProof);
 
 router.get('/types', getTypes);
 router.get('/modes', getModes);
+router.get('/accounts', async (req: any, res) => {
+  try { res.json({ accounts: await listEventAccounts(req.authUser) }); }
+  catch (error) { sendApiError(req, res, error, 'No se pudieron cargar los eventos asignados'); }
+});
+router.get('/:id/members', async (req: any, res) => {
+  try { res.json({ members: await listEventMembers(req.params.id, req.authUser) }); }
+  catch (error) { sendApiError(req, res, error, 'No se pudieron cargar los miembros'); }
+});
+router.post('/:id/members', async (req: any, res) => {
+  try { res.status(201).json({ members: await addEventMember(req.params.id, req.body || {}, req.authUser) }); }
+  catch (error) { sendApiError(req, res, error, 'No se pudo agregar el miembro'); }
+});
+router.patch('/:id/members/:memberId', async (req: any, res) => {
+  try { res.json({ members: await changeEventMember(req.params.id, req.params.memberId, req.body || {}, req.authUser) }); }
+  catch (error) { sendApiError(req, res, error, 'No se pudo cambiar el miembro'); }
+});
+router.delete('/:id/members/:memberId', async (req: any, res) => {
+  try { res.json({ members: await changeEventMember(req.params.id, req.params.memberId, {}, req.authUser, true) }); }
+  catch (error) { sendApiError(req, res, error, 'No se pudo retirar el miembro'); }
+});
+router.use('/:id/library', eventLibraryRouter);
 router.get('/:id/modes/:eventModeId/config', getConfig);
 router.put('/:id/modes/:eventModeId/config', putConfig);
 router.post('/:id/modes/:eventModeId/config/validate', postValidate);

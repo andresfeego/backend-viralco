@@ -1,19 +1,18 @@
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { billingDb } from '../db/billing.ts';
 import { db } from '../db/index.ts';
-import { accountLibraryTable, accountsTable, accountUsersTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, permissionsTable, rolePermissionsTable, rolesTable, subscriptionsTable, usersTable } from '../db/schema.ts';
+import { accountLibraryTable, accountsTable, accountUsersTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventsTable, libraryAssetsTable, libraryAssetVariantsTable, rolesTable, subscriptionsTable, usersTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { deleteR2Objects } from '../r2.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { technicalErrorDetail, writeTechnicalErrorLog } from '../lib/technical-error-log.ts';
-import { assertAccountAccess, findAccountById, findAccountMembership, getMembershipPermissions, isSuperAdmin } from './account-access.service.ts';
+import { assertAccountAccess, findAccountById, isSuperAdmin } from './account-access.service.ts';
 import { getLibraryAssetWithVariants } from './library.service.ts';
 import { createAccountSubscription, getLatestAccountSubscription } from './subscriptions.service.ts';
+import { createInitialBillingContract } from './billing-contract.service.ts';
 import { buildAuthUser, findRoleBySlug } from './user.service.ts';
 
 const ACCOUNT_STATUSES = new Set(['active', 'suspended', 'canceled']);
-const MEMBER_STATUSES = new Set(['active', 'suspended']);
-const ASSIGNABLE_ROLES = new Set(['admin', 'operario', 'cliente']);
 
 function normalizeOptionalEmail(value: unknown) {
   const email = String(value || '').trim().toLowerCase();
@@ -72,7 +71,8 @@ export async function listAccounts(requester: any) {
   }
   const rows = await db.select({ account: accountsTable }).from(accountUsersTable)
     .innerJoin(accountsTable, eq(accountUsersTable.accountId, accountsTable.id))
-    .where(and(eq(accountUsersTable.userId, parseEntityId(requester.id)), eq(accountUsersTable.status, 'active'), eq(accountsTable.status, 'active')));
+    .innerJoin(rolesTable, eq(rolesTable.id, accountUsersTable.roleId))
+    .where(and(eq(rolesTable.slug, 'owner'), eq(accountUsersTable.userId, parseEntityId(requester.id)), eq(accountUsersTable.status, 'active'), eq(accountsTable.status, 'active')));
   return Promise.all(rows.map((row) => mapAccountWithSubscription(row.account)));
 }
 
@@ -116,6 +116,9 @@ async function createAccountRecord(input: any, requester: any, options: { ownerU
       invitedBy: parseEntityId(requester.id), invitedAt: now, joinedAt: now, createdAt: now, updatedAt: now,
     });
     const subscription = await createAccountSubscription({ accountId, planSlug: input?.planSlug || 'suscripcion', modeSlugs: input?.modeSlugs, status: options.subscriptionStatus, metadata: { ...options.subscriptionMetadata, billingPreference: { durationDays, modeSlugs: input?.modeSlugs || [] } } }, tx);
+    const contract = await createInitialBillingContract(tx, accountId, subscription, durationDays, parseEntityId(requester.id));
+    subscription.totalAmount = contract.amountCop;
+    subscription.currency = 'COP';
     return mapAccount({
       id: accountId, slug, name, logoAssetId,
       phone: String(input?.phone || '').trim() || null, email, ownerUserId, status: 'active', createdAt: now, updatedAt: now,
@@ -182,7 +185,8 @@ export async function removeAccount(accountIdValue: unknown, input: any, request
   ]);
 
   const financialHistory = await billingDb('billing_orders').where({ account_id: String(accountId) }).first()
-    || await billingDb('billing_periods').where({ account_id: String(accountId) }).first();
+    || await billingDb('billing_periods').where({ account_id: String(accountId) }).first()
+    || await billingDb('billing_contracts').where({ account_id: String(accountId) }).first();
   if (publication.length || session.length || financialHistory) {
     const now = new Date();
     await db.transaction(async (tx) => {
@@ -235,75 +239,4 @@ export async function listMembers(accountIdValue: unknown, requester: any) {
     invitedBy: serializeId(membership.invitedBy), invitedAt: membership.invitedAt,
     joinedAt: membership.joinedAt, createdAt: membership.createdAt, updatedAt: membership.updatedAt,
   }));
-}
-
-export async function addMember(accountIdValue: unknown, input: any, requester: any) {
-  const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'write', 'accounts.members.manage');
-  const userId = parseEntityId(input?.userId, 'ID de usuario');
-  const roleSlug = String(input?.roleSlug || '').trim();
-  if (!ASSIGNABLE_ROLES.has(roleSlug)) throw new ServiceError(400, 'Rol de cuenta invalido');
-  if (await findAccountMembership(accountId, userId)) throw new ServiceError(409, 'El usuario ya pertenece a la cuenta');
-  const user = await buildAuthUser(userId);
-  if (!user) throw new ServiceError(404, 'Usuario no encontrado');
-  if (user.status.slug !== 'active') throw new ServiceError(409, 'El usuario debe estar activo');
-  const role = await findRoleBySlug(roleSlug);
-  if (!role) throw new ServiceError(404, 'Rol no encontrado');
-  const now = new Date();
-  await db.insert(accountUsersTable).values({
-    accountId, userId, roleId: role.id, status: 'active', invitedBy: parseEntityId(requester.id),
-    invitedAt: now, joinedAt: now, createdAt: now, updatedAt: now,
-  });
-  return listMembers(accountId, requester);
-}
-
-async function assertCanChangeOwnerMembership(accountId: EntityId, membership: any, patch: any, deleting = false) {
-  const account = await findAccountById(accountId);
-  if (account?.isSystem && membership.userId === account.ownerUserId && (deleting || patch.status === 'suspended' || patch.roleId)) {
-    throw new ServiceError(409, 'No se puede modificar el propietario canonico de la cuenta de plataforma');
-  }
-  const ownerRole = await findRoleBySlug('owner');
-  if (!ownerRole || membership.roleId !== ownerRole.id) return;
-  const willStopBeingActiveOwner = deleting || patch.status === 'suspended' || (patch.roleId && patch.roleId !== ownerRole.id);
-  if (!willStopBeingActiveOwner) return;
-  const activeOwners = await db.select().from(accountUsersTable)
-    .where(and(eq(accountUsersTable.accountId, accountId), eq(accountUsersTable.roleId, ownerRole.id), eq(accountUsersTable.status, 'active'), ne(accountUsersTable.id, membership.id)));
-  if (activeOwners.length === 0) throw new ServiceError(409, 'No se puede dejar la cuenta sin owner activo');
-}
-
-export async function updateMember(accountIdValue: unknown, membershipIdValue: unknown, input: any, requester: any) {
-  const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  const membershipId = parseEntityId(membershipIdValue, 'ID de membresia');
-  await assertAccountAccess(accountId, requester, 'write', 'accounts.members.manage');
-  const [membership] = await db.select().from(accountUsersTable)
-    .where(and(eq(accountUsersTable.id, membershipId), eq(accountUsersTable.accountId, accountId))).limit(1);
-  if (!membership) throw new ServiceError(404, 'Membresia no encontrada');
-  const patch: any = { updatedAt: new Date() };
-  if (input?.status !== undefined) {
-    const status = String(input.status);
-    if (!MEMBER_STATUSES.has(status)) throw new ServiceError(400, 'Estado de membresia invalido');
-    patch.status = status;
-  }
-  if (input?.roleSlug !== undefined) {
-    const roleSlug = String(input.roleSlug);
-    if (!ASSIGNABLE_ROLES.has(roleSlug)) throw new ServiceError(400, 'Rol de cuenta invalido');
-    const role = await findRoleBySlug(roleSlug);
-    if (!role) throw new ServiceError(404, 'Rol no encontrado');
-    patch.roleId = role.id;
-  }
-  await assertCanChangeOwnerMembership(accountId, membership, patch);
-  await db.update(accountUsersTable).set(patch).where(eq(accountUsersTable.id, membershipId));
-  return listMembers(accountId, requester);
-}
-
-export async function removeMember(accountIdValue: unknown, membershipIdValue: unknown, requester: any) {
-  const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  const membershipId = parseEntityId(membershipIdValue, 'ID de membresia');
-  await assertAccountAccess(accountId, requester, 'write', 'accounts.members.manage');
-  const [membership] = await db.select().from(accountUsersTable)
-    .where(and(eq(accountUsersTable.id, membershipId), eq(accountUsersTable.accountId, accountId))).limit(1);
-  if (!membership) throw new ServiceError(404, 'Membresia no encontrada');
-  await assertCanChangeOwnerMembership(accountId, membership, {}, true);
-  await db.delete(accountUsersTable).where(eq(accountUsersTable.id, membershipId));
-  return { deleted: true };
 }

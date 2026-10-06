@@ -22,7 +22,9 @@ run('auth, accounts, subscriptions and events integration', () => {
   beforeAll(async () => {
     if (process.env.DB_NAME !== 'viralco_billing_test') throw new Error('Integration tests require isolated viralco_billing_test');
     await billingDb('billing_catalog').update({ archived_by: null, archived_at: null });
-    for (const table of ['billing_reviews', 'billing_reports', 'billing_periods', 'billing_orders', 'billing_transitions', 'billing_bank_options', 'billing_settings']) await billingDb(table).delete();
+    await billingDb('billing_orders').update({ renewal_period_id: null });
+    for (const table of ['billing_notices', 'billing_contracts', 'billing_reviews', 'billing_reports', 'billing_periods', 'billing_orders', 'billing_transitions', 'billing_bank_options', 'billing_settings']) await billingDb(table).delete();
+    await billingDb('billing_catalog').whereIn('mode_id', billingDb('modes').whereIn('slug', ['espejo', 'cabina', 'video-360']).select('id')).update({ available: true, price_30_cop: 50000, price_365_cop: 500000 });
     await db.delete(eventBrandingTable);
     await db.delete(deliveriesTable);
     await db.delete(assetEventResourcesTable);
@@ -126,19 +128,19 @@ run('auth, accounts, subscriptions and events integration', () => {
     const ownerMembership = members.body.members.find((member: any) => member.role.slug === 'owner');
     const removed = await request(app).delete(`/api/accounts/${accountId}/members/${ownerMembership.id}`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`);
-    expect(removed.status).toBe(409);
+    expect(removed.status).toBe(410);
   });
 
-  it('allows invited users to work without paying and blocks outsiders', async () => {
+  it('retires account-level invitations and blocks outsiders', async () => {
     const member = await createUser({
       email: 'member@test.local', password: await hashPassword('Password_123!'), name: 'Member Test', statusSlug: 'active',
     });
     const added = await request(app).post(`/api/accounts/${accountId}/members`)
       .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ userId: String(member.id), roleSlug: 'cliente' });
-    expect(added.status).toBe(201);
+    expect(added.status).toBe(410);
     const memberLogin = await request(app).post('/api/auth/login').send({ email: member.email, password: 'Password_123!' });
-    expect(memberLogin.body.user.accounts[0].account.id).toBe(accountId);
+    expect(memberLogin.body.user.accounts).toEqual([]);
 
     const outsider = await createUser({
       email: 'outsider@test.local', password: await hashPassword('Password_123!'), name: 'Outsider Test', statusSlug: 'active',
@@ -247,20 +249,20 @@ run('auth, accounts, subscriptions and events integration', () => {
     expect(published.status).toBe(201);
   });
 
-  it('lets an account administrator delete an event without history', async () => {
+  it('lets an assigned event administrator delete only that event without history', async () => {
     const administrator = await createUser({
       email: 'event-admin@test.local', password: await hashPassword('Password_123!'), name: 'Event Admin', statusSlug: 'active',
     });
-    const added = await request(app).post(`/api/accounts/${accountId}/members`)
-      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
-      .send({ userId: String(administrator.id), roleSlug: 'admin' });
-    expect(added.status).toBe(201);
     adminLogin = await request(app).post('/api/auth/login').send({ email: administrator.email, password: 'Password_123!' });
 
     const created = await request(app).post(`/api/accounts/${accountId}/events`)
-      .set('Authorization', `Bearer ${adminLogin.body.accessToken}`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
       .send({ name: 'Evento eliminable', eventTypeSlug: 'boda', startDate: '2026-09-08', status: 'draft', timezone: 'America/Bogota', modeSlugs: ['espejo'] });
     expect(created.status).toBe(201);
+    const added = await request(app).post(`/api/events/${created.body.event.id}/members`)
+      .set('Authorization', `Bearer ${ownerLogin.body.accessToken}`)
+      .send({ email: administrator.email, roleSlug: 'admin' });
+    expect(added.status).toBe(201);
     const removed = await request(app).delete(`/api/events/${created.body.event.id}`)
       .set('Authorization', `Bearer ${adminLogin.body.accessToken}`);
     expect(removed.status).toBe(200);

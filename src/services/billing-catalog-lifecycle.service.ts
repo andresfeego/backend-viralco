@@ -26,6 +26,7 @@ async function impact(tx: any, mode: any) {
     preferences: await count(tx('subscriptions').whereRaw('JSON_CONTAINS(JSON_EXTRACT(metadata, ?), ?) = 1', ['$.billingPreference.modeSlugs', JSON.stringify(mode.slug)])),
     orders: await count(jsonUses('billing_orders', 'snapshot', '$.items')),
     periods: await count(jsonUses('billing_periods', 'services', '$')),
+    contracts: await count(jsonUses('billing_contracts', 'services', '$')),
   };
   const action = Object.values(usage).some(value => value > 0) ? 'archive' : 'delete';
   const revision = createHash('sha256').update(JSON.stringify({ modeId, name: mode.name, action, usage, archivedAt: mode.archived_at, updatedAt: mode.updated_at })).digest('hex');

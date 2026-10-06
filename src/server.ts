@@ -15,6 +15,7 @@ import libraryRoute from './routes/library.ts';
 import publicAssetsRoute from './routes/public-assets.ts';
 import billingRoute from './routes/billing.ts';
 import { reconcileBillingExpiry } from './services/billing.service.ts';
+import { startBillingRenewalSchedule } from './services/billing-renewal-job.ts';
 
 const app = express();
 export { app };
@@ -43,6 +44,7 @@ app.use((error: any, req: any, res: any, _next: any) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
+  startBillingRenewalSchedule();
   const billingTimer = setInterval(() => { reconcileBillingExpiry().catch(error => console.error('[billing-expiry]', error?.name)); }, 60000);
   billingTimer.unref();
   app.listen(env.port, '0.0.0.0', () => {

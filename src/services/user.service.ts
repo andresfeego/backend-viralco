@@ -3,6 +3,8 @@ import { db } from '../db/index.ts';
 import {
   accountsTable,
   accountUsersTable,
+  eventUsersTable,
+  eventsTable,
   permissionsTable,
   rolePermissionsTable,
   rolesTable,
@@ -92,7 +94,7 @@ export async function getUserAccounts(userId: EntityId) {
   }).from(accountUsersTable)
     .innerJoin(accountsTable, eq(accountUsersTable.accountId, accountsTable.id))
     .innerJoin(rolesTable, eq(accountUsersTable.roleId, rolesTable.id))
-    .where(eq(accountUsersTable.userId, userId));
+    .where(and(eq(accountUsersTable.userId, userId), eq(rolesTable.slug, 'owner')));
 
   return Promise.all(rows.map(async (row) => ({
     membershipId: serializeId(row.membershipId),
@@ -114,11 +116,20 @@ async function getStatus(statusId: EntityId) {
   return status || null;
 }
 
+async function getUserEvents(userId: EntityId) {
+  const rows = await db.select({ eventId: eventsTable.id, accountId: eventsTable.accountId, roleSlug: rolesTable.slug })
+    .from(eventUsersTable).innerJoin(eventsTable, eq(eventsTable.id, eventUsersTable.eventId))
+    .innerJoin(accountsTable, eq(accountsTable.id, eventsTable.accountId))
+    .innerJoin(rolesTable, eq(rolesTable.id, eventUsersTable.roleId))
+    .where(and(eq(eventUsersTable.userId, userId), eq(eventUsersTable.status, 'active'), eq(accountsTable.status, 'active')));
+  return rows.map(row => ({ eventId: serializeId(row.eventId), accountId: serializeId(row.accountId), roleSlug: row.roleSlug }));
+}
+
 export async function buildAuthUser(userId: EntityId) {
   const user = await findUserById(userId);
   if (!user) return null;
-  const [status, globalRoles, permissions, accounts] = await Promise.all([
-    getStatus(user.statusId), getUserGlobalRoles(user.id), getGlobalPermissions(user.id), getUserAccounts(user.id),
+  const [status, globalRoles, permissions, accounts, events] = await Promise.all([
+    getStatus(user.statusId), getUserGlobalRoles(user.id), getGlobalPermissions(user.id), getUserAccounts(user.id), getUserEvents(user.id),
   ]);
   if (!status) throw new ServiceError(500, 'Estado de usuario invalido');
   return {
@@ -131,6 +142,8 @@ export async function buildAuthUser(userId: EntityId) {
     globalRoles: globalRoles.map((role) => ({ ...role, id: serializeId(role.id) })),
     permissions: permissions.map((permission) => ({ ...permission, id: serializeId(permission.id) })),
     accounts,
+    events,
+    eventMembershipPolicy: 1,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

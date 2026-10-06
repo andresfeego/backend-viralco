@@ -23,3 +23,10 @@ it('permits only the exact live session after commercial expiry', async () => {
   mocks.state.mockResolvedValue({ active: false, administrativelyBlocked: true });
   await expect(assertRuntimeBilling(context, requester, session)).rejects.toMatchObject({ status: 403 });
 });
+
+it('does not continue an expired or rejected provisional session using a cached proof', async () => {
+  mocks.state.mockResolvedValue({ active: false, administrativelyBlocked: false, periods: [] });
+  const grant = signOfflineAuthorization({ ...claims, periods: [{ startsAt: 1000, endsAt: 3000, services: ['espejo'], provisional: true }] });
+  const requester = { id: '1', billingLiveProof: { grant, startedAt: 2000, processId: 'process', clientSessionId: 'live' } };
+  await expect(assertRuntimeBilling(context, requester, { clientSessionId: 'live', deviceInstallationId: 'phone', startedBy: 1n, status: 'running' })).rejects.toMatchObject({ status: 403 });
+});

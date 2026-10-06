@@ -6,7 +6,7 @@ import { assertBillingActive, billingState } from './billing.service.ts';
 const failure = () => new ServiceError(403, JSON.stringify({ code: 'BILLING_OPERATION_BLOCKED', message: 'Conecta el dispositivo y revisa la vigencia de la cuenta' }));
 function key() { return createPrivateKey(readFileSync(process.env.OFFLINE_SIGNING_KEY_FILE || '.secrets/offline-ed25519.pem')); }
 export function signOfflineAuthorization(claims: any) {
-  const payload = Buffer.from(JSON.stringify({ ...claims, purpose: 'kaptura-offline-operation', v: 2 })).toString('base64');
+  const payload = Buffer.from(JSON.stringify({ ...claims, purpose: 'kaptura-offline-operation', v: 3 })).toString('base64');
   return { payload, signature: sign(null, Buffer.from(payload, 'base64'), key()).toString('base64') };
 }
 export function verifyOfflineAuthorization(grant: any) {
@@ -14,7 +14,7 @@ export function verifyOfflineAuthorization(grant: any) {
   const bytes = Buffer.from(grant.payload, 'base64');
   if (!verify(null, bytes, createPublicKey(key()), Buffer.from(grant.signature, 'base64'))) throw failure();
   const claims = JSON.parse(bytes.toString());
-  if (claims.v !== 2 || claims.purpose !== 'kaptura-offline-operation' || !Number.isFinite(claims.issuedAt) || !Number.isFinite(claims.expiresAt) || claims.expiresAt <= claims.issuedAt) throw failure();
+  if (claims.v !== 3 || claims.purpose !== 'kaptura-offline-operation' || !Number.isFinite(claims.issuedAt) || !Number.isFinite(claims.expiresAt) || claims.expiresAt <= claims.issuedAt) throw failure();
   return claims;
 }
 export async function issueOfflineAuthorization(context: any, user: any, deviceId: string) {
@@ -22,7 +22,7 @@ export async function issueOfflineAuthorization(context: any, user: any, deviceI
   const state = await assertBillingActive(context.event.accountId, 'espejo');
   const issuedAt = Date.now();
   const periods = state.system ? [{ startsAt: issuedAt, endsAt: issuedAt + 30 * 86400000, services: ['espejo', 'cabina', 'video-360'] }]
-    : state.periods.filter((p: any) => new Date(p.endsAt).getTime() > issuedAt).map((p: any) => ({ startsAt: new Date(p.startsAt).getTime(), endsAt: new Date(p.endsAt).getTime(), services: p.services.map((m: any) => m.slug) }));
+    : state.authorizationPeriods.filter((p: any) => new Date(p.endsAt).getTime() > issuedAt).map((p: any) => ({ startsAt: new Date(p.startsAt).getTime(), endsAt: new Date(p.endsAt).getTime(), services: p.services.map((m: any) => m.slug), provisional: p.source === 'provisional' }));
   return signOfflineAuthorization({ userId: String(user.id), accountId: String(context.event.accountId), eventId: String(context.eventId), eventModeId: String(context.eventModeId), deviceId,
     services: state.system ? ['espejo', 'cabina', 'video-360'] : state.current.services.map((m: any) => m.slug), issuedAt, periods,
     expiresAt: Math.max(...periods.map((p: any) => p.endsAt)) });
@@ -41,6 +41,8 @@ export async function assertRuntimeBilling(context: any, user: any, session?: an
   if (!proof || !session) throw failure();
   const grant = verifyOfflineAuthorization(proof.grant);
   const start = Number(proof.startedAt);
+  // A pending/rejected transfer must never inherit paid-session continuity.
+  if (grant.periods?.find((p: any) => p.startsAt <= start && start < p.endsAt && p.services.includes('espejo'))?.provisional) throw failure();
   if (state.periods?.some((p: any) => new Date(p.startsAt).getTime() > start && new Date(p.startsAt).getTime() <= Date.now() && !p.services.some((m: any) => m.slug === 'espejo'))) throw failure();
   if (grant.periods && !grant.periods.some((p: any) => p.startsAt <= start && start < p.endsAt && p.services.includes('espejo'))) throw failure();
   const metadata = typeof session.metadata === 'string' ? JSON.parse(session.metadata) : session.metadata;

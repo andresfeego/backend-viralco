@@ -1,9 +1,12 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { eventBrandingTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventTypesTable, libraryAssetsTable, modesTable } from '../db/schema.ts';
+import { eventBrandingTable, eventModeConfigVersionsTable, eventModeSessionsTable, eventModesTable, eventResourcesTable, eventsTable, eventUsersTable, accountsTable, eventTypesTable, libraryAssetsTable, modesTable } from '../db/schema.ts';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
-import { assertAccountAccess } from './account-access.service.ts';
+import { assertAccountAccess, findAccountMembership, isSuperAdmin } from './account-access.service.ts';
+import { assertEventAccess, eventRole } from './event-access.service.ts';
+import { listAccounts } from './accounts.service.ts';
+import { getLatestAccountSubscription } from './subscriptions.service.ts';
 import { assertAssetAvailableForEventAccount, getLibraryAssetWithVariants, mapLibraryAsset } from './library.service.ts';
 import { assertAccountCanCreateEvent, assertSubscriptionIncludesModes } from './subscriptions.service.ts';
 
@@ -40,21 +43,9 @@ function assertPositiveInt(value: unknown, label: string, fallback = 0) {
   return number;
 }
 
-async function findEvent(eventId: EntityId) {
-  const [event] = await db.select().from(eventsTable).where(eq(eventsTable.id, eventId)).limit(1);
-  return event || null;
-}
-
 async function findEventTypeById(eventTypeId: EntityId) {
   const [eventType] = await db.select().from(eventTypesTable).where(eq(eventTypesTable.id, eventTypeId)).limit(1);
   return eventType || null;
-}
-
-async function assertEventAccess(eventId: EntityId, requester: any, mode: 'read' | 'write', permission?: string) {
-  const event = await findEvent(eventId);
-  if (!event) throw new ServiceError(404, 'Evento no encontrado');
-  await assertAccountAccess(event.accountId, requester, mode, permission || (mode === 'write' ? 'events.update' : 'events.view'));
-  return event;
 }
 
 async function getBranding(eventId: EntityId) {
@@ -107,10 +98,11 @@ async function mapBranding(branding: any) {
   };
 }
 
-async function mapEventRow(row: any) {
+async function mapEventRow(row: any, requester: any) {
   const [branding, modes, eventType] = await Promise.all([getBranding(row.id), getEventModes(row.id), findEventTypeById(row.eventTypeId)]);
   return {
     id: serializeId(row.id), accountId: serializeId(row.accountId), slug: row.slug, name: row.name,
+    access: { roleSlug: await eventRole(row, requester) },
     eventTypeId: serializeId(row.eventTypeId),
     eventType: eventType ? { id: serializeId(eventType.id), slug: eventType.slug, name: eventType.name, description: eventType.description } : null,
     description: row.description || '', startDate: row.startDate || null, endDate: row.endDate || null,
@@ -141,15 +133,36 @@ export async function listEventTypes() {
 
 export async function listEventsByAccount(accountIdValue: unknown, requester: any) {
   const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-  await assertAccountAccess(accountId, requester, 'read', 'events.view');
-  const rows = await db.select().from(eventsTable).where(eq(eventsTable.accountId, accountId)).orderBy(asc(eventsTable.startDate), asc(eventsTable.id));
-  return Promise.all(rows.map(mapEventRow));
+  const owner = await findAccountMembership(accountId, parseEntityId(requester.id));
+  const all = isSuperAdmin(requester) || (owner?.membership.status === 'active' && owner.role.slug === 'owner');
+  if (all) await assertAccountAccess(accountId, requester, 'read', 'events.view');
+  const assigned = all ? [] : await db.select({ id: eventUsersTable.eventId }).from(eventUsersTable).where(and(eq(eventUsersTable.userId, parseEntityId(requester.id)), eq(eventUsersTable.status, 'active')));
+  if (!all && !assigned.length) return [];
+  const rows = await db.select().from(eventsTable).where(and(eq(eventsTable.accountId, accountId), all ? undefined : inArray(eventsTable.id, assigned.map(row => row.id)))).orderBy(asc(eventsTable.startDate), asc(eventsTable.id));
+  return Promise.all(rows.map(row => mapEventRow(row, requester)));
+}
+
+export async function listEventAccounts(requester: any) {
+  const owned = await listAccounts(requester);
+  if (isSuperAdmin(requester)) return owned;
+  const assigned = await db.select({ account: accountsTable }).from(eventUsersTable)
+    .innerJoin(eventsTable, eq(eventsTable.id, eventUsersTable.eventId)).innerJoin(accountsTable, eq(accountsTable.id, eventsTable.accountId))
+    .where(and(eq(eventUsersTable.userId, parseEntityId(requester.id)), eq(eventUsersTable.status, 'active'), eq(accountsTable.status, 'active')));
+  const result = new Map(owned.map(account => [account.id, account]));
+  for (const { account } of assigned) {
+    const id = serializeId(account.id)!;
+    if (!result.has(id)) {
+      const subscription = await getLatestAccountSubscription(account.id);
+      result.set(id, { id, name: account.name, slug: account.slug, status: account.status, eventAssignmentOnly: true, subscription: { modes: subscription?.modes || [] } } as any);
+    }
+  }
+  return [...result.values()];
 }
 
 export async function getEventById(eventIdValue: unknown, requester: any) {
   const eventId = parseEntityId(eventIdValue, 'ID de evento');
   const event = await assertEventAccess(eventId, requester, 'read');
-  return mapEventRow(event);
+  return mapEventRow(event, requester);
 }
 
 async function assertUniqueSlug(accountId: EntityId, slug: string, skipEventId?: EntityId) {

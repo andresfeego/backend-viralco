@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { billingDb as db } from '../src/db/billing.ts';
 import { createBankOption, listBankOptions, updateBankOption, selectTransferBank, saveBankSettings } from '../src/services/billing-bank.service.ts';
-import { accountBilling, createBillingOrder, cancelBillingOrder, saveBillingCatalog } from '../src/services/billing.service.ts';
+import { accountBilling, cancelBillingOrder, saveBillingCatalog } from '../src/services/billing.service.ts';
 
 const suite = process.env.RUN_BILLING_DB_TESTS === '1' ? describe : describe.skip;
 const details = { bank: 'Synthetic bank', holder: 'Test holder', identification: '001', accountType: 'Savings', accountNumber: '000123', instructions: 'Only test data', active: true };
@@ -22,7 +22,13 @@ suite('multiple transfer destinations in isolated database', () => {
     second = await createBankOption({ ...details, bank: 'Second bank', accountNumber: '000456', active: false }, admin);
   });
   afterAll(() => db.destroy());
-  const order = (bankId: string) => createBillingOrder(account, { modeIds: [mode], durationDays: 30, bankId }, admin);
+  // Historical orders selected a bank; new fixed-contract receipts do not.
+  const order = (bankId: string) => db.transaction(async tx => {
+    const bank = await selectTransferBank(tx, bankId);
+    const snapshot = { currency: 'COP', durationDays: 30, amountCop: 50000, items: [{ modeId: mode, slug: 'espejo', name: 'Espejo', amountCop: 50000 }], bank };
+    const [id] = await tx('billing_orders').insert({ account_id: account, open_account_id: account, status: 'awaiting_payment', duration_days: 30, amount_cop: 50000, snapshot: JSON.stringify(snapshot), created_by: admin.id });
+    return { id: String(id), snapshot };
+  });
   it('persists independent active/inactive options and only exposes active options to the customer', async () => {
     const all = await listBankOptions();
     expect(all.find(item => item.id === first.id)).toMatchObject({ ...details, id: first.id, revision: 1 });

@@ -7,7 +7,8 @@ import { renderPrintProfileVariants } from '../lib/print-profile-preview.mjs';
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { buildLibraryAssetVariantKey, deleteR2Objects, putR2Object, r2PublicUrl } from '../r2.ts';
-import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
+import { isSuperAdmin } from './account-access.service.ts';
+import { assertLibraryAccountAccess } from './event-access.service.ts';
 import { getLibraryAssetWithVariants, normalizeEventTypeScope, replaceAssetEventTypes } from './library.service.ts';
 
 function parseJson(value: any) {
@@ -34,7 +35,7 @@ export async function getPrintProfile(assetIdValue: unknown, requester: any, acc
   if (!asset || asset.type !== 'print_profile' || asset.status !== 'active') throw new ServiceError(404, 'Perfil de impresion no encontrado');
   if (accountIdValue !== undefined) {
     const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-    await assertAccountAccess(accountId, requester, 'read', 'library.view');
+    await assertLibraryAccountAccess(accountId, requester, 'read', 'library.view');
     if (asset.ownerType === 'account' && asset.ownerAccountId !== accountId) throw new ServiceError(403, 'Perfil no disponible para la cuenta');
   } else if (!isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
   const record = await profileRecord(assetId);
@@ -44,7 +45,7 @@ export async function getPrintProfile(assetIdValue: unknown, requester: any, acc
 
 export async function createPrintProfile(input: any, requester: any, owner: { ownerType: 'viralco' | 'account'; accountId?: EntityId }) {
   if (owner.ownerType === 'viralco' && !isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
-  if (owner.ownerType === 'account') await assertAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
+  if (owner.ownerType === 'account') await assertLibraryAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
   const name = String(input?.name || '').trim();
   if (!name) throw new ServiceError(400, 'Nombre de perfil requerido');
   const profile = canonicalPrintProfile(input?.profile);

@@ -14,7 +14,7 @@ import {
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { detachLegacyPhotoLayoutTemplate, MIRROR_CONFIGURABLE_ANIMATION_STAGES, validateMirrorConfigLocally as validateMirrorConfigContract } from '../domain/magic-mirror-config.ts';
-import { assertAccountAccess } from './account-access.service.ts';
+import { assertEventAccess } from './event-access.service.ts';
 import { getLibraryAssetWithVariants } from './library.service.ts';
 import { assertSubscriptionIncludesModes } from './subscriptions.service.ts';
 
@@ -354,7 +354,7 @@ export async function getMirrorContext(eventIdValue: unknown, eventModeIdValue: 
     .where(and(eq(eventModesTable.id, eventModeId), eq(eventsTable.id, eventId)))
     .limit(1);
   if (!row) throw new ServiceError(404, 'Modo de evento no encontrado');
-  await assertAccountAccess(row.event.accountId, requester, permission === 'events.view' || permission === 'capture.operate' ? 'read' : 'write', permission);
+  await assertEventAccess(row.event.id, requester, permission === 'events.view' || permission === 'capture.operate' ? 'read' : 'write', permission);
   if (row.mode.slug !== 'espejo') throw new ServiceError(400, 'La configuracion solo aplica al modo espejo');
   if (!row.eventMode.isActive) throw new ServiceError(409, 'El modo espejo esta inactivo');
   if (permission === 'capture.operate' && row.event.status !== 'active') throw new ServiceError(409, JSON.stringify({ code: 'EVENT_NOT_ACTIVE', message: 'Activa el evento antes de lanzarlo' }));
@@ -455,7 +455,7 @@ export async function saveMirrorConfig(eventIdValue: unknown, eventModeIdValue: 
   const canonicalConfig = detachLegacyPhotoLayoutTemplate(input?.config);
   const validation = await fullValidation(context, canonicalConfig, false);
   if (!validation.valid) throw new ServiceError(400, JSON.stringify({ code: 'CONFIG_INVALID', errors: validation.errors }));
-  if (resourceIds(canonicalConfig).length) await assertAccountAccess(context.event.accountId, requester, 'write', 'events.resources.manage');
+  if (resourceIds(canonicalConfig).length) await assertEventAccess(context.eventId, requester, 'write', 'events.resources.manage');
   const expectedRevision = Number(input?.expectedRevision);
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new ServiceError(400, 'expectedRevision invalida');
   const [current] = await db.select().from(eventModeConfigsTable).where(eq(eventModeConfigsTable.eventModeId, context.eventModeId)).limit(1);

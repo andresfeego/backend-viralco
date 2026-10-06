@@ -43,7 +43,7 @@ export async function assertAccountAccess(accountId: EntityId, requester: any, m
   if (isSuperAdmin(requester)) return { account, membership: null, roleSlug: 'super_admin' };
 
   const row = await findAccountMembership(accountId, parseEntityId(requester.id));
-  if (!row || row.membership.status !== 'active') throw new ServiceError(403, 'Sin acceso a la cuenta');
+  if (!row || row.membership.status !== 'active' || row.role.slug !== 'owner') throw new ServiceError(403, 'Sin acceso a la cuenta');
   if (mode === 'write' && !['owner', 'admin'].includes(row.role.slug)) throw new ServiceError(403, 'Rol de cuenta insuficiente');
   if (requiredPermission) {
     const permissions = await getMembershipPermissions(row.role.id);

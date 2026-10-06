@@ -14,7 +14,8 @@ import { renderPhotoLayoutTemplateVariants } from '../lib/photo-layout-preview.m
 import { parseEntityId, serializeId, type EntityId } from '../lib/ids.ts';
 import { ServiceError } from '../lib/service-error.ts';
 import { buildLibraryAssetVariantKey, deleteR2Objects, putR2Object, r2PublicUrl } from '../r2.ts';
-import { assertAccountAccess, isSuperAdmin } from './account-access.service.ts';
+import { isSuperAdmin } from './account-access.service.ts';
+import { assertLibraryAccountAccess, assertEventAccess } from './event-access.service.ts';
 import { getLibraryAssetWithVariants, normalizeEventTypeScope, replaceAssetEventTypes } from './library.service.ts';
 import { saveMirrorConfig } from './magic-mirror.service.ts';
 
@@ -42,7 +43,7 @@ export async function getPhotoLayoutTemplate(assetIdValue: unknown, requester: a
   if (!asset || asset.type !== 'template' || asset.status !== 'active') throw new ServiceError(404, 'Plantilla no encontrada');
   if (accountIdValue !== undefined) {
     const accountId = parseEntityId(accountIdValue, 'ID de cuenta');
-    await assertAccountAccess(accountId, requester, 'read', 'library.view');
+    await assertLibraryAccountAccess(accountId, requester, 'read', 'library.view');
     if (asset.ownerType === 'account' && asset.ownerAccountId !== accountId) throw new ServiceError(403, 'Plantilla no disponible para la cuenta');
   } else if (!isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
   const record = await templateRecord(assetId);
@@ -52,7 +53,7 @@ export async function getPhotoLayoutTemplate(assetIdValue: unknown, requester: a
 
 export async function createPhotoLayoutTemplate(input: any, requester: any, owner: { ownerType: 'viralco' | 'account'; accountId?: EntityId }) {
   if (owner.ownerType === 'viralco' && !isSuperAdmin(requester)) throw new ServiceError(403, 'Se requiere Super Admin');
-  if (owner.ownerType === 'account') await assertAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
+  if (owner.ownerType === 'account') await assertLibraryAccountAccess(owner.accountId!, requester, 'write', 'library.manage');
   const name = String(input?.name || '').trim();
   if (!name) throw new ServiceError(400, 'Nombre de plantilla requerido');
   const template = canonicalPhotoLayoutTemplate(input?.template || photoLayoutFromMirrorLayout(input?.layout));
@@ -131,7 +132,7 @@ export async function applyPhotoLayoutTemplate(eventIdValue: unknown, eventModeI
     .from(eventModesTable).innerJoin(eventsTable, eq(eventModesTable.eventId, eventsTable.id)).innerJoin(modesTable, eq(eventModesTable.modeId, modesTable.id))
     .where(and(eq(eventsTable.id, eventId), eq(eventModesTable.id, eventModeId))).limit(1);
   if (!context) throw new ServiceError(404, 'Modo de evento no encontrado');
-  await assertAccountAccess(context.event.accountId, requester, 'write', 'events.update');
+  await assertEventAccess(eventId, requester, 'write', 'events.update');
   if (context.mode.slug !== 'espejo' || !context.eventMode.isActive) throw new ServiceError(409, 'El modo Espejo no esta disponible');
   const [asset] = await db.select().from(libraryAssetsTable).where(eq(libraryAssetsTable.id, assetId)).limit(1);
   if (!asset || asset.type !== 'template' || asset.status !== 'active') throw new ServiceError(404, 'Plantilla no encontrada');

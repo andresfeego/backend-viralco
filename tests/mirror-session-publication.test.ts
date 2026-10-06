@@ -17,7 +17,7 @@ const mock = vi.hoisted(() => {
   return { db, rows, insert, execute };
 });
 vi.mock('../src/db/index.ts', () => ({ db: mock.db }));
-vi.mock('../src/services/account-access.service.ts', () => ({ assertAccountAccess: vi.fn(async () => ({})) }));
+vi.mock('../src/services/event-access.service.ts', () => ({ assertEventAccess: vi.fn(async () => ({})) }));
 vi.mock('../src/services/subscriptions.service.ts', () => ({ assertSubscriptionIncludesModes: vi.fn(async () => ({})) }));
 vi.mock('../src/services/library.service.ts', () => ({ getLibraryAssetWithVariants: vi.fn() }));
 import { getMirrorConfig, startMirrorSession } from '../src/services/magic-mirror.service.ts';
